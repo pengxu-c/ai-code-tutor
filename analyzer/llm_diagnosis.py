@@ -61,10 +61,22 @@ class LLMDiagnosis:
         Returns:
             模型生成的文本内容
         """
+        api_key = self._normalize_api_key()
+        if not api_key:
+            return (
+                "API Key 未配置：请在页面“配置”区域输入 DeepSeek API Key，"
+                "或设置环境变量 DEEPSEEK_API_KEY 后重启应用。"
+            )
+        if not api_key.startswith("sk-"):
+            return (
+                "API Key 格式不正确：DeepSeek 的 Authorization 应为 `Bearer sk-...`。"
+                "请只填写以 `sk-` 开头的 API Key，不要填写占位符或其他文本。"
+            )
+
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
         }
         payload = {
             "model": model or self.diagnosis_model,
@@ -85,6 +97,13 @@ class LLMDiagnosis:
             return f"API 请求失败（HTTP {e.response.status_code}）：{e.response.text[:200]}"
         except (KeyError, IndexError):
             return "API 返回格式异常，请检查 API 配置。"
+
+    def _normalize_api_key(self) -> str:
+        """Normalize user input to a raw DeepSeek API key."""
+        api_key = (self.api_key or "").strip()
+        if api_key.lower().startswith("bearer "):
+            api_key = api_key[7:].strip()
+        return api_key
 
     # ------------------------------------------------------------------
     #  错误诊断
