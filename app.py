@@ -68,7 +68,7 @@ def run_diagnosis(
     test_expected: str,
     generate_variants: bool,
     api_key: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, object, list[dict]]:
     """
     执行完整的诊断流程
 
@@ -79,7 +79,7 @@ def run_diagnosis(
 
     # 参数校验
     if not code.strip():
-        return "", "请输入需要诊断的代码。"
+        return "", "请输入需要诊断的代码。", gr.update(choices=[], value=None), []
 
     # 如果用户配置了 API Key，动态更新
     if api_key and api_key.strip():
@@ -92,6 +92,7 @@ def run_diagnosis(
     builder.set_project_info("项目4", "AI编程题讲解机器人")
 
     status_parts = []
+    generated_variants = []
 
     # ------------------------------------------------------------------
     # 第 1 步：AST 结构分析
@@ -202,6 +203,7 @@ def run_diagnosis(
                 tags=tags if tags else None,
                 count=3,
             )
+            generated_variants = _normalize_variants(variants)
             builder.add_variant_problems([v["description"] for v in variants])
             status_parts.append(f"变式训练生成完成（{len(variants)} 题）")
         except Exception as e:
@@ -212,9 +214,18 @@ def run_diagnosis(
     report = builder.build()
     elapsed = time.time() - start_time
     status = f"诊断完成（耗时 {elapsed:.1f}s）：" + " → ".join(status_parts)
+    variant_choices = [
+        _format_variant_choice(i, variant)
+        for i, variant in enumerate(generated_variants, 1)
+    ]
 
     logger.info(status)
-    return report, status
+    return (
+        report,
+        status,
+        gr.update(choices=variant_choices, value=variant_choices[0] if variant_choices else None),
+        generated_variants,
+    )
 
 
 # ======================================================================
@@ -238,6 +249,33 @@ def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str
         return table, f"已检索到 {len(table)} 道题。复制最后一列 slug 到下方即可导入。"
     except Exception as e:
         return [], f"LeetCode 检索失败：{str(e)}"
+
+
+def import_generated_variant(selected_variant: str, variants: list[dict], language: str) -> tuple[object, object, object, object, str]:
+    """把生成的变式题导入左侧输入区。"""
+    index = _parse_variant_index(selected_variant)
+    if index is None or not variants or index >= len(variants):
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            "请先生成变式题，并选择要导入的题目。",
+        )
+
+    variant = variants[index]
+    description = variant.get("description", "")
+    title = variant.get("title", "")
+    if title and title not in description:
+        description = f"# {title}\n\n{description}"
+
+    return (
+        gr.update(value="", language=get_gradio_language(language)),
+        description,
+        "",
+        "",
+        f"已导入变式题：{title or selected_variant}",
+    )
 
 
 def load_leetcode_template(slug_or_url: str, language: str) -> tuple[object, str, str, str, str]:
@@ -294,6 +332,47 @@ def _infer_problem_title(problem_desc: str) -> str:
     return "自定义题目"
 
 
+def _normalize_variants(variants: list[dict]) -> list[dict]:
+    """保留生成结果中导入所需的稳定字段。"""
+    normalized = []
+    for i, variant in enumerate(variants, 1):
+        title = variant.get("title") or _extract_variant_title(variant.get("description", "")) or f"变式题 {i}"
+        normalized.append({
+            "title": title,
+            "description": variant.get("description", ""),
+            "difficulty": variant.get("difficulty", ""),
+            "source": variant.get("source", ""),
+        })
+    return normalized
+
+
+def _format_variant_choice(index: int, variant: dict) -> str:
+    title = variant.get("title") or f"变式题 {index}"
+    difficulty = variant.get("difficulty")
+    suffix = f"（{difficulty}）" if difficulty else ""
+    return f"{index}. {title}{suffix}"
+
+
+def _parse_variant_index(selected_variant: str) -> int | None:
+    if not selected_variant:
+        return None
+    prefix = selected_variant.split(".", 1)[0].strip()
+    if not prefix.isdigit():
+        return None
+    return int(prefix) - 1
+
+
+def _extract_variant_title(description: str) -> str:
+    for line in (description or "").splitlines():
+        stripped = line.strip().strip("*# ")
+        if not stripped:
+            continue
+        if "题目名称" in stripped and "：" in stripped:
+            return stripped.split("：", 1)[1].strip().strip("*")
+        return stripped[:40]
+    return ""
+
+
 def get_code_explanation(code: str, language: str, api_key: str) -> str:
     """生成代码解释"""
     if not code.strip():
@@ -332,6 +411,7 @@ def build_ui():
     with gr.Blocks(
         title=GRADIO_TITLE,
     ) as demo:
+        generated_variants_state = gr.State([])
 
         # ==================== 页头 ====================
         gr.Markdown(
@@ -457,6 +537,18 @@ def build_ui():
                     value="诊断报告将在此处显示...",
                 )
 
+                with gr.Row():
+                    variant_selector = gr.Dropdown(
+                        choices=[],
+                        label="生成的变式题",
+                        scale=3,
+                    )
+                    import_variant_btn = gr.Button(
+                        "导入变式题",
+                        variant="secondary",
+                        scale=1,
+                    )
+
         # ==================== 事件绑定 ====================
         # 诊断按钮
         diagnose_btn.click(
@@ -471,7 +563,7 @@ def build_ui():
                 gen_variants,
                 api_key_input,
             ],
-            outputs=[report_output, status_output],
+            outputs=[report_output, status_output, variant_selector, generated_variants_state],
         )
 
         # 代码解释按钮
@@ -499,6 +591,13 @@ def build_ui():
         leetcode_import_btn.click(
             fn=load_leetcode_template,
             inputs=[leetcode_slug_input, language_selector],
+            outputs=[code_input, problem_desc_input, test_input, test_expected, status_output],
+        )
+
+        # 生成的变式题 → 一键导入输入区
+        import_variant_btn.click(
+            fn=import_generated_variant,
+            inputs=[variant_selector, generated_variants_state, language_selector],
             outputs=[code_input, problem_desc_input, test_input, test_expected, status_output],
         )
 

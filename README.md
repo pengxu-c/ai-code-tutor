@@ -9,6 +9,7 @@
 - 子进程沙箱运行测试用例
 - 本地题库与 LLM 结合生成变式训练题
 - LeetCode 在线题库按需检索与导入
+- 生成的变式训练题可一键导入输入区继续练习
 - 支持选择 Python3、Java、C++、JavaScript、Go、Rust 等编程语言
 - Gradio Web 界面展示诊断报告
 
