@@ -39,20 +39,15 @@ from analyzer.llm_diagnosis import LLMDiagnosis
 from analyzer.sandbox import SandboxRunner
 from generator.variant import VariantGenerator
 from database import (
-    load_problems,
-    get_all_titles,
     get_leetcode_problem,
     search_leetcode_problems,
 )
 from utils.languages import (
-    build_local_starter,
     get_gradio_language,
     get_language_choices,
     get_leetcode_slug,
     is_python_language,
 )
-
-CUSTOM_PROBLEM_LABEL = "（自定义题目）"
 
 # ==================== 初始化 ====================
 logger = setup_logger(__name__)
@@ -60,11 +55,6 @@ ast_analyzer = ASTAnalyzer()
 llm_diagnosis = LLMDiagnosis()
 sandbox_runner = SandboxRunner()
 variant_generator = VariantGenerator()
-
-# 加载题库
-problems_db = load_problems()
-logger.info(f"题库加载完成，共 {len(problems_db)} 道题目")
-
 
 # ======================================================================
 #  核心诊断流程
@@ -76,7 +66,6 @@ def run_diagnosis(
     error_info: str,
     test_input: str,
     test_expected: str,
-    selected_problem: str,
     generate_variants: bool,
     api_key: str,
 ) -> tuple[str, str]:
@@ -97,20 +86,8 @@ def run_diagnosis(
         llm_diagnosis.api_key = api_key.strip()
         variant_generator.llm.api_key = api_key.strip()
 
-    # 如果选择了预设题目，自动填充
-    is_preset_problem = selected_problem and selected_problem != CUSTOM_PROBLEM_LABEL
-    if is_preset_problem and not problem_desc.strip():
-        from database import get_problem_by_title
-        prob = get_problem_by_title(selected_problem)
-        if prob:
-            problem_desc = prob.get("description", "")
-            examples = prob.get("examples", [])
-            if examples and not test_expected.strip():
-                test_input = str(examples[0].get("input", ""))
-                test_expected = str(examples[0].get("output", ""))
-
     # 构建报告
-    title = selected_problem if is_preset_problem else _infer_problem_title(problem_desc)
+    title = _infer_problem_title(problem_desc)
     builder = MarkdownReportBuilder(problem_title=title)
     builder.set_project_info("项目4", "AI编程题讲解机器人")
 
@@ -243,24 +220,6 @@ def run_diagnosis(
 # ======================================================================
 #  辅助功能
 # ======================================================================
-def load_problem_template(problem_title: str, language: str) -> tuple[object, str, str, str]:
-    """加载预设题目的模板信息"""
-    if not problem_title or problem_title == CUSTOM_PROBLEM_LABEL:
-        return gr.update(value="", language=get_gradio_language(language)), "", "", ""
-    from database import get_problem_by_title
-    prob = get_problem_by_title(problem_title)
-    if not prob:
-        return gr.update(value="", language=get_gradio_language(language)), "", "", ""
-
-    desc = prob.get("description", "")
-    examples = prob.get("examples", [])
-    starter = build_local_starter(prob, language)
-    test_in = str(examples[0].get("input", "")) if examples else ""
-    test_out = str(examples[0].get("output", "")) if examples else ""
-
-    return gr.update(value=starter, language=get_gradio_language(language)), desc, test_in, test_out
-
-
 def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str]:
     """在线检索 LeetCode 题目。"""
     try:
@@ -301,23 +260,9 @@ def load_leetcode_template(slug_or_url: str, language: str) -> tuple[object, str
         return gr.update(language=get_gradio_language(language)), "", "", "", f"LeetCode 导入失败：{str(e)}"
 
 
-def apply_language_change(
-    problem_title: str,
-    language: str,
-    current_code: str,
-    current_desc: str,
-    current_test_input: str,
-    current_test_expected: str,
-) -> tuple[object, str, str, str]:
-    """更新代码编辑器语言；如果当前选中了预设题，则同步切换模板。"""
-    if problem_title and problem_title != CUSTOM_PROBLEM_LABEL:
-        return load_problem_template(problem_title, language)
-    return (
-        gr.update(value=current_code, language=get_gradio_language(language)),
-        current_desc,
-        current_test_input,
-        current_test_expected,
-    )
+def apply_language_change(language: str, current_code: str) -> object:
+    """更新代码编辑器语言高亮，保留用户当前代码。"""
+    return gr.update(value=current_code, language=get_gradio_language(language))
 
 
 def _format_leetcode_description(problem: dict) -> str:
@@ -366,9 +311,6 @@ def get_code_explanation(code: str, language: str, api_key: str) -> str:
 # ======================================================================
 def build_ui():
     """构建 Gradio 交互界面"""
-
-    # 预设题目下拉列表
-    problem_titles = [CUSTOM_PROBLEM_LABEL] + get_all_titles()
 
     # 自定义 CSS
     custom_css = """
@@ -419,13 +361,6 @@ def build_ui():
                     choices=get_language_choices(),
                     value="Python3",
                     label="编程语言",
-                )
-
-                # 预设题目选择
-                problem_selector = gr.Dropdown(
-                    choices=problem_titles,
-                    value=CUSTOM_PROBLEM_LABEL,
-                    label="选择预设题目（可选）",
                 )
 
                 with gr.Accordion("🌐 LeetCode 在线题库", open=False):
@@ -522,21 +457,6 @@ def build_ui():
                     value="诊断报告将在此处显示...",
                 )
 
-        # ==================== 题库浏览 ====================
-        with gr.Accordion("📚 题库浏览", open=False):
-            gr.Markdown(
-                "内置 " + str(len(problems_db)) + " 道经典编程题，选择后自动填充代码模板和测试用例。"
-            )
-            problem_gallery = gr.Dataframe(
-                headers=["题目", "难度", "标签"],
-                value=[
-                    [p.get("title", ""), p.get("difficulty", ""), ", ".join(p.get("tags", []))]
-                    for p in problems_db
-                ],
-                label="题库列表",
-                interactive=False,
-            )
-
         # ==================== 事件绑定 ====================
         # 诊断按钮
         diagnose_btn.click(
@@ -548,7 +468,6 @@ def build_ui():
                 error_input,
                 test_input,
                 test_expected,
-                problem_selector,
                 gen_variants,
                 api_key_input,
             ],
@@ -562,25 +481,11 @@ def build_ui():
             outputs=[report_output],
         )
 
-        # 选择预设题目 → 自动填充
-        problem_selector.change(
-            fn=load_problem_template,
-            inputs=[problem_selector, language_selector],
-            outputs=[code_input, problem_desc_input, test_input, test_expected],
-        )
-
-        # 切换语言 → 更新编辑器高亮；如果已选预设题则同步切换模板
+        # 切换语言 → 更新编辑器高亮
         language_selector.change(
             fn=apply_language_change,
-            inputs=[
-                problem_selector,
-                language_selector,
-                code_input,
-                problem_desc_input,
-                test_input,
-                test_expected,
-            ],
-            outputs=[code_input, problem_desc_input, test_input, test_expected],
+            inputs=[language_selector, code_input],
+            outputs=[code_input],
         )
 
         # LeetCode 在线检索
