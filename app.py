@@ -44,6 +44,13 @@ from database import (
     get_leetcode_problem,
     search_leetcode_problems,
 )
+from utils.languages import (
+    build_local_starter,
+    get_gradio_language,
+    get_language_choices,
+    get_leetcode_slug,
+    is_python_language,
+)
 
 CUSTOM_PROBLEM_LABEL = "（自定义题目）"
 
@@ -64,6 +71,7 @@ logger.info(f"题库加载完成，共 {len(problems_db)} 道题目")
 # ======================================================================
 def run_diagnosis(
     code: str,
+    language: str,
     problem_desc: str,
     error_info: str,
     test_input: str,
@@ -112,13 +120,20 @@ def run_diagnosis(
     # 第 1 步：AST 结构分析
     # ------------------------------------------------------------------
     if REPORT_INCLUDE_AST:
-        try:
-            ast_report = ast_analyzer.analyze(code)
-            builder.add_ast_analysis(ast_report)
-            status_parts.append("AST 结构分析完成")
-        except Exception as e:
-            logger.error(f"AST 分析异常: {e}")
-            status_parts.append(f"AST 分析失败: {e}")
+        if is_python_language(language):
+            try:
+                ast_report = ast_analyzer.analyze(code)
+                builder.add_ast_analysis(ast_report)
+                status_parts.append("AST 结构分析完成")
+            except Exception as e:
+                logger.error(f"AST 分析异常: {e}")
+                status_parts.append(f"AST 分析失败: {e}")
+        else:
+            builder.add_ast_analysis(
+                f"当前选择的编程语言为 **{language}**。\n\n"
+                "Python AST 结构分析仅支持 Python3 代码，因此本次跳过 AST 分析。"
+            )
+            status_parts.append(f"已跳过 AST（{language}）")
 
     # ------------------------------------------------------------------
     # 第 2 步：LLM 智能诊断
@@ -134,6 +149,7 @@ def run_diagnosis(
             problem_desc=problem_desc,
             error_info=error_info,
             test_cases=test_cases if test_cases else None,
+            language=language,
         )
         builder.add_error_diagnosis(
             error_analysis=diag_result["error_analysis"],
@@ -152,23 +168,30 @@ def run_diagnosis(
     # 第 3 步：沙箱运行验证
     # ------------------------------------------------------------------
     if REPORT_INCLUDE_SANDBOX and test_input.strip():
-        try:
-            results = sandbox_runner.run_tests(
-                code=code,
-                test_cases=[{"input": test_input, "expected": test_expected}],
+        if is_python_language(language):
+            try:
+                results = sandbox_runner.run_tests(
+                    code=code,
+                    test_cases=[{"input": test_input, "expected": test_expected}],
+                )
+                builder.add_sandbox_results([{
+                    "input": r.input_data,
+                    "expected": r.expected_output,
+                    "actual": r.actual_output,
+                    "passed": r.passed,
+                    "error": r.error,
+                } for r in results])
+                status_parts.append("沙箱运行验证完成")
+            except Exception as e:
+                logger.error(f"沙箱运行异常: {e}")
+                builder.add_sandbox_results([])
+                status_parts.append(f"沙箱运行失败: {e}")
+        else:
+            builder.add_sandbox_results(
+                [],
+                skipped_reason=f"当前沙箱运行暂仅支持 Python3，已跳过 {language} 代码执行验证。",
             )
-            builder.add_sandbox_results([{
-                "input": r.input_data,
-                "expected": r.expected_output,
-                "actual": r.actual_output,
-                "passed": r.passed,
-                "error": r.error,
-            } for r in results])
-            status_parts.append("沙箱运行验证完成")
-        except Exception as e:
-            logger.error(f"沙箱运行异常: {e}")
-            builder.add_sandbox_results([])
-            status_parts.append(f"沙箱运行失败: {e}")
+            status_parts.append(f"已跳过沙箱（{language}）")
 
     # ------------------------------------------------------------------
     # 第 4 步：变式训练
@@ -220,22 +243,22 @@ def run_diagnosis(
 # ======================================================================
 #  辅助功能
 # ======================================================================
-def load_problem_template(problem_title: str) -> tuple[str, str, str, str]:
+def load_problem_template(problem_title: str, language: str) -> tuple[object, str, str, str]:
     """加载预设题目的模板信息"""
     if not problem_title or problem_title == CUSTOM_PROBLEM_LABEL:
-        return "", "", "", ""
+        return gr.update(value="", language=get_gradio_language(language)), "", "", ""
     from database import get_problem_by_title
     prob = get_problem_by_title(problem_title)
     if not prob:
-        return "", "", "", ""
+        return gr.update(value="", language=get_gradio_language(language)), "", "", ""
 
     desc = prob.get("description", "")
     examples = prob.get("examples", [])
-    starter = prob.get("starter_code", "")
+    starter = build_local_starter(prob, language)
     test_in = str(examples[0].get("input", "")) if examples else ""
     test_out = str(examples[0].get("output", "")) if examples else ""
 
-    return starter, desc, test_in, test_out
+    return gr.update(value=starter, language=get_gradio_language(language)), desc, test_in, test_out
 
 
 def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str]:
@@ -258,10 +281,10 @@ def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str
         return [], f"LeetCode 检索失败：{str(e)}"
 
 
-def load_leetcode_template(slug_or_url: str) -> tuple[str, str, str, str, str]:
+def load_leetcode_template(slug_or_url: str, language: str) -> tuple[object, str, str, str, str]:
     """从 LeetCode 在线导入题目模板。"""
     try:
-        problem = get_leetcode_problem(slug_or_url)
+        problem = get_leetcode_problem(slug_or_url, language_slug=get_leetcode_slug(language))
         examples = problem.get("examples", [])
         test_in = str(examples[0].get("input", "")) if examples else ""
         test_out = str(examples[0].get("output", "")) if examples else ""
@@ -269,9 +292,32 @@ def load_leetcode_template(slug_or_url: str) -> tuple[str, str, str, str, str]:
         status = f"已导入 LeetCode 题目：{problem.get('title', '')}"
         if problem.get("paid_only"):
             status += "（会员题，题面可能不完整）"
-        return problem.get("starter_code", ""), desc, test_in, test_out, status
+        code_update = gr.update(
+            value=problem.get("starter_code", ""),
+            language=get_gradio_language(language),
+        )
+        return code_update, desc, test_in, test_out, status
     except Exception as e:
-        return "", "", "", "", f"LeetCode 导入失败：{str(e)}"
+        return gr.update(language=get_gradio_language(language)), "", "", "", f"LeetCode 导入失败：{str(e)}"
+
+
+def apply_language_change(
+    problem_title: str,
+    language: str,
+    current_code: str,
+    current_desc: str,
+    current_test_input: str,
+    current_test_expected: str,
+) -> tuple[object, str, str, str]:
+    """更新代码编辑器语言；如果当前选中了预设题，则同步切换模板。"""
+    if problem_title and problem_title != CUSTOM_PROBLEM_LABEL:
+        return load_problem_template(problem_title, language)
+    return (
+        gr.update(value=current_code, language=get_gradio_language(language)),
+        current_desc,
+        current_test_input,
+        current_test_expected,
+    )
 
 
 def _format_leetcode_description(problem: dict) -> str:
@@ -303,14 +349,14 @@ def _infer_problem_title(problem_desc: str) -> str:
     return "自定义题目"
 
 
-def get_code_explanation(code: str, api_key: str) -> str:
+def get_code_explanation(code: str, language: str, api_key: str) -> str:
     """生成代码解释"""
     if not code.strip():
         return "请先输入代码。"
     if api_key and api_key.strip():
         llm_diagnosis.api_key = api_key.strip()
     try:
-        return llm_diagnosis.explain_code(code)
+        return llm_diagnosis.explain_code(code, language=language)
     except Exception as e:
         return f"解释失败：{str(e)}"
 
@@ -369,6 +415,12 @@ def build_ui():
             with gr.Column(scale=1):
                 gr.Markdown("### 📝 输入")
 
+                language_selector = gr.Dropdown(
+                    choices=get_language_choices(),
+                    value="Python3",
+                    label="编程语言",
+                )
+
                 # 预设题目选择
                 problem_selector = gr.Dropdown(
                     choices=problem_titles,
@@ -413,7 +465,7 @@ def build_ui():
                 # 代码输入
                 code_input = gr.Code(
                     label="你的代码",
-                    language="python",
+                    language=get_gradio_language("Python3"),
                     lines=12,
                 )
 
@@ -491,6 +543,7 @@ def build_ui():
             fn=run_diagnosis,
             inputs=[
                 code_input,
+                language_selector,
                 problem_desc_input,
                 error_input,
                 test_input,
@@ -505,14 +558,28 @@ def build_ui():
         # 代码解释按钮
         explain_btn.click(
             fn=get_code_explanation,
-            inputs=[code_input, api_key_input],
+            inputs=[code_input, language_selector, api_key_input],
             outputs=[report_output],
         )
 
         # 选择预设题目 → 自动填充
         problem_selector.change(
             fn=load_problem_template,
-            inputs=[problem_selector],
+            inputs=[problem_selector, language_selector],
+            outputs=[code_input, problem_desc_input, test_input, test_expected],
+        )
+
+        # 切换语言 → 更新编辑器高亮；如果已选预设题则同步切换模板
+        language_selector.change(
+            fn=apply_language_change,
+            inputs=[
+                problem_selector,
+                language_selector,
+                code_input,
+                problem_desc_input,
+                test_input,
+                test_expected,
+            ],
             outputs=[code_input, problem_desc_input, test_input, test_expected],
         )
 
@@ -526,7 +593,7 @@ def build_ui():
         # LeetCode 在线导入
         leetcode_import_btn.click(
             fn=load_leetcode_template,
-            inputs=[leetcode_slug_input],
+            inputs=[leetcode_slug_input, language_selector],
             outputs=[code_input, problem_desc_input, test_input, test_expected, status_output],
         )
 

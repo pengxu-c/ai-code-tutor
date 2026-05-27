@@ -216,7 +216,7 @@ class LeetCodeClient:
         value = value.strip("/ ")
         return value
 
-    def fetch_problem(self, slug_or_url: str) -> dict[str, Any]:
+    def fetch_problem(self, slug_or_url: str, language_slug: str = "python3") -> dict[str, Any]:
         slug = self.normalize_slug(slug_or_url)
         if not slug:
             raise ValueError("请输入 LeetCode 题目链接或 titleSlug，例如 two-sum。")
@@ -228,7 +228,7 @@ class LeetCodeClient:
                 payload = self._graphql(endpoint, query, {"titleSlug": slug})
                 question = payload.get("question")
                 if question:
-                    return self._format_problem(question, endpoint)
+                    return self._format_problem(question, endpoint, language_slug)
             except Exception as exc:
                 last_error = exc
 
@@ -282,7 +282,7 @@ class LeetCodeClient:
             raise RuntimeError(messages)
         return body.get("data") or {}
 
-    def _format_problem(self, question: dict[str, Any], endpoint: str) -> dict[str, Any]:
+    def _format_problem(self, question: dict[str, Any], endpoint: str, language_slug: str) -> dict[str, Any]:
         is_cn = "leetcode.cn" in endpoint
         title = question.get("translatedTitle") or question.get("title") or question.get("titleSlug", "")
         raw_content = question.get("translatedContent") or question.get("content") or ""
@@ -297,10 +297,17 @@ class LeetCodeClient:
                 tags.append(tag_name)
 
         starter = ""
+        snippets = {}
         for snippet in question.get("codeSnippets") or []:
-            if snippet.get("langSlug") in {"python3", "python"}:
+            slug = snippet.get("langSlug", "")
+            if slug:
+                snippets[slug] = snippet.get("code") or ""
+            if slug == language_slug:
                 starter = snippet.get("code") or ""
-                break
+        if not starter and language_slug == "python3":
+            starter = snippets.get("python") or ""
+        if not starter:
+            starter = snippets.get("python3") or next(iter(snippets.values()), "")
 
         source_host = "leetcode.cn" if is_cn else "leetcode.com"
         return {
@@ -310,6 +317,8 @@ class LeetCodeClient:
             "description": description,
             "examples": _extract_examples(question.get("exampleTestcases") or question.get("sampleTestCase") or ""),
             "starter_code": starter,
+            "code_snippets": snippets,
+            "selected_language": language_slug,
             "hint": "题目来自 LeetCode 在线导入，请结合原站示例与约束练习。",
             "source": source_host,
             "leetcode_slug": title_slug,

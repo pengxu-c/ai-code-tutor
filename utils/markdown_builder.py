@@ -64,11 +64,11 @@ class MarkdownReportBuilder:
         return self
 
     # ---------- 沙箱运行 ----------
-    def add_sandbox_results(self, results: list[dict]):
+    def add_sandbox_results(self, results: list[dict], skipped_reason: str = ""):
         if not results:
             self.sandbox_section = ReportSection(
                 title="四、运行验证",
-                content="未执行沙箱测试。",
+                content=skipped_reason or "未执行沙箱测试。",
             )
             return self
 

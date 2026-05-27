@@ -95,6 +95,7 @@ class LLMDiagnosis:
         problem_desc: str = "",
         error_info: str = "",
         test_cases: Optional[list[dict]] = None,
+        language: str = "Python3",
     ) -> dict:
         """
         对用户代码进行全面的错误诊断
@@ -104,6 +105,7 @@ class LLMDiagnosis:
             problem_desc: 题目描述
             error_info: 报错信息或运行结果
             test_cases: 测试用例列表，每个元素 {"input": ..., "expected": ...}
+            language: 用户代码使用的编程语言
 
         Returns:
             包含 error_analysis 和 fix_suggestion 两个键的字典
@@ -115,18 +117,21 @@ class LLMDiagnosis:
                 test_info += f"- 用例{i}：输入={tc.get('input','')}, 期望输出={tc.get('expected','')}\n"
 
         system_prompt = """你是一位经验丰富的编程教师和代码审查专家。你的任务是：
-1. 仔细阅读学生的代码，找出其中的逻辑错误、语法错误或效率问题
+1. 仔细阅读学生使用指定编程语言编写的代码，找出其中的逻辑错误、语法错误或效率问题
 2. 用通俗易懂的语言解释错误原因，帮助学生理解"为什么错"
-3. 给出具体的修复建议，包括修改后的完整代码
+3. 给出具体的修复建议，包括使用同一种编程语言修改后的完整代码
 4. 如果代码是正确的，也要指出可以优化的地方
 
 请用中文回答，使用 Markdown 格式。"""
 
-        user_prompt = f"""## 题目描述
+        user_prompt = f"""## 编程语言
+{language}
+
+## 题目描述
 {problem_desc or '（未提供）'}
 
 ## 学生代码
-```python
+```{language.lower()}
 {code}
 ```
 
@@ -143,7 +148,7 @@ class LLMDiagnosis:
 详细解释为什么会产生这个错误，帮助学生理解问题的本质。
 
 ### 3. 修复建议
-给出修改后的完整代码，并用注释标注修改的位置。
+给出使用 **{language}** 修改后的完整代码，并用该语言的注释标注修改的位置。不要切换到其他编程语言。
 
 ### 4. 知识点总结
 列出涉及的关键知识点，帮助学生巩固。"""
@@ -237,7 +242,7 @@ class LLMDiagnosis:
     # ------------------------------------------------------------------
     #  代码理解（简要说明）
     # ------------------------------------------------------------------
-    def explain_code(self, code: str) -> str:
+    def explain_code(self, code: str, language: str = "Python3") -> str:
         """
         用通俗语言解释代码的功能和逻辑
 
@@ -248,7 +253,7 @@ class LLMDiagnosis:
             代码功能说明
         """
         system_prompt = "你是一位耐心的编程老师。请用通俗易懂的中文解释以下代码的功能、逻辑流程和关键步骤。"
-        user_prompt = f"请解释以下代码：\n```python\n{code}\n```"
+        user_prompt = f"请解释以下 {language} 代码：\n```{language.lower()}\n{code}\n```"
 
         return self._call_llm(
             messages=[
