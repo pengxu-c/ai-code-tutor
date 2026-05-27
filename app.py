@@ -298,6 +298,13 @@ def load_leetcode_template(slug_or_url: str, language: str) -> tuple[object, str
         return gr.update(language=get_gradio_language(language)), "", "", "", f"LeetCode 导入失败：{str(e)}"
 
 
+def load_leetcode_template_and_switch(slug_or_url: str, language: str) -> tuple[object, str, str, str, str, object]:
+    """导入 LeetCode 题目，并切回输入与诊断页。"""
+    code, desc, test_in, test_out, status = load_leetcode_template(slug_or_url, language)
+    target_tab = "input" if status.startswith("已导入") else "library"
+    return code, desc, test_in, test_out, status, gr.update(selected=target_tab)
+
+
 def apply_language_change(language: str, current_code: str) -> object:
     """更新代码编辑器语言高亮，保留用户当前代码。"""
     return gr.update(value=current_code, language=get_gradio_language(language))
@@ -445,8 +452,8 @@ def build_ui():
             )
 
         # ==================== 主界面 ====================
-        with gr.Tabs(elem_classes=["main-tabs"]):
-            with gr.Tab("输入与诊断"):
+        with gr.Tabs(selected="input", elem_classes=["main-tabs"]) as main_tabs:
+            with gr.Tab("输入与诊断", id="input"):
                 with gr.Row():
                     # ---- 左侧：输入区 ----
                     with gr.Column(scale=1):
@@ -537,7 +544,7 @@ def build_ui():
                                 scale=1,
                             )
 
-            with gr.Tab("题库"):
+            with gr.Tab("题库", id="library"):
                 gr.Markdown("### 📚 LeetCode 在线题库")
                 with gr.Row():
                     leetcode_keyword = gr.Textbox(
@@ -553,7 +560,6 @@ def build_ui():
                     )
                 with gr.Row():
                     leetcode_search_btn = gr.Button("🔍 检索 LeetCode", variant="secondary")
-                    leetcode_import_btn = gr.Button("导入题目到输入区", variant="primary")
                 leetcode_search_status = gr.Markdown(value="")
                 leetcode_results = gr.Dataframe(
                     headers=["编号", "标题", "难度", "标签", "Slug", "会员题"],
@@ -565,8 +571,9 @@ def build_ui():
                     label="题目链接或 Slug",
                     placeholder="例：two-sum 或 https://leetcode.cn/problems/two-sum/",
                 )
+                leetcode_import_btn = gr.Button("导入题目到输入区", variant="primary")
 
-            with gr.Tab("使用指南"):
+            with gr.Tab("使用指南", id="guide"):
                 gr.Markdown(
                     """
                     ### ℹ️ 使用指南
@@ -620,9 +627,9 @@ def build_ui():
 
         # LeetCode 在线导入
         leetcode_import_btn.click(
-            fn=load_leetcode_template,
+            fn=load_leetcode_template_and_switch,
             inputs=[leetcode_slug_input, language_selector],
-            outputs=[code_input, problem_desc_input, test_input, test_expected, status_output],
+            outputs=[code_input, problem_desc_input, test_input, test_expected, status_output, main_tabs],
         )
 
         # 生成的变式题 → 一键导入输入区
