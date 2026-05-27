@@ -3,7 +3,10 @@ import json
 import os
 from typing import Dict, List, Optional
 
+from .leetcode_client import LeetCodeClient
+
 _PROBLEMS_DB_PATH = os.path.join(os.path.dirname(__file__), "problems.json")
+_LEETCODE_CLIENT = LeetCodeClient()
 
 
 def load_problems() -> List[Dict]:
@@ -32,3 +35,13 @@ def get_problems_by_difficulty(difficulty: str) -> List[Dict]:
 def get_all_titles() -> List[str]:
     """获取所有题目标题"""
     return [p.get("title", "") for p in load_problems() if p.get("title")]
+
+
+def get_leetcode_problem(slug_or_url: str) -> Dict:
+    """在线获取单道 LeetCode 题目。"""
+    return _LEETCODE_CLIENT.fetch_problem(slug_or_url)
+
+
+def search_leetcode_problems(keyword: str = "", difficulty: str = "", limit: int = 20) -> List[Dict]:
+    """在线检索 LeetCode 题目列表。"""
+    return _LEETCODE_CLIENT.search(keyword=keyword, difficulty=difficulty, limit=limit)

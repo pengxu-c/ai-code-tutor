@@ -38,7 +38,14 @@ from analyzer.ast_analyzer import ASTAnalyzer
 from analyzer.llm_diagnosis import LLMDiagnosis
 from analyzer.sandbox import SandboxRunner
 from generator.variant import VariantGenerator
-from database import load_problems, get_all_titles
+from database import (
+    load_problems,
+    get_all_titles,
+    get_leetcode_problem,
+    search_leetcode_problems,
+)
+
+CUSTOM_PROBLEM_LABEL = "（自定义题目）"
 
 # ==================== 初始化 ====================
 logger = setup_logger(__name__)
@@ -83,7 +90,8 @@ def run_diagnosis(
         variant_generator.llm.api_key = api_key.strip()
 
     # 如果选择了预设题目，自动填充
-    if selected_problem and not problem_desc.strip():
+    is_preset_problem = selected_problem and selected_problem != CUSTOM_PROBLEM_LABEL
+    if is_preset_problem and not problem_desc.strip():
         from database import get_problem_by_title
         prob = get_problem_by_title(selected_problem)
         if prob:
@@ -94,7 +102,7 @@ def run_diagnosis(
                 test_expected = str(examples[0].get("output", ""))
 
     # 构建报告
-    title = selected_problem or "自定义题目"
+    title = selected_problem if is_preset_problem else _infer_problem_title(problem_desc)
     builder = MarkdownReportBuilder(problem_title=title)
     builder.set_project_info("项目4", "AI编程题讲解机器人")
 
@@ -214,7 +222,7 @@ def run_diagnosis(
 # ======================================================================
 def load_problem_template(problem_title: str) -> tuple[str, str, str, str]:
     """加载预设题目的模板信息"""
-    if not problem_title:
+    if not problem_title or problem_title == CUSTOM_PROBLEM_LABEL:
         return "", "", "", ""
     from database import get_problem_by_title
     prob = get_problem_by_title(problem_title)
@@ -228,6 +236,71 @@ def load_problem_template(problem_title: str) -> tuple[str, str, str, str]:
     test_out = str(examples[0].get("output", "")) if examples else ""
 
     return starter, desc, test_in, test_out
+
+
+def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str]:
+    """在线检索 LeetCode 题目。"""
+    try:
+        rows = search_leetcode_problems(keyword=keyword, difficulty=difficulty, limit=20)
+        table = [
+            [
+                r.get("id", ""),
+                r.get("title", ""),
+                r.get("difficulty", ""),
+                ", ".join(r.get("tags", [])),
+                r.get("slug", ""),
+                "是" if r.get("paid_only") else "否",
+            ]
+            for r in rows
+        ]
+        return table, f"已检索到 {len(table)} 道题。复制最后一列 slug 到下方即可导入。"
+    except Exception as e:
+        return [], f"LeetCode 检索失败：{str(e)}"
+
+
+def load_leetcode_template(slug_or_url: str) -> tuple[str, str, str, str, str]:
+    """从 LeetCode 在线导入题目模板。"""
+    try:
+        problem = get_leetcode_problem(slug_or_url)
+        examples = problem.get("examples", [])
+        test_in = str(examples[0].get("input", "")) if examples else ""
+        test_out = str(examples[0].get("output", "")) if examples else ""
+        desc = _format_leetcode_description(problem)
+        status = f"已导入 LeetCode 题目：{problem.get('title', '')}"
+        if problem.get("paid_only"):
+            status += "（会员题，题面可能不完整）"
+        return problem.get("starter_code", ""), desc, test_in, test_out, status
+    except Exception as e:
+        return "", "", "", "", f"LeetCode 导入失败：{str(e)}"
+
+
+def _format_leetcode_description(problem: dict) -> str:
+    """把在线题目转换成当前报告系统使用的题目描述。"""
+    parts = [
+        f"# {problem.get('title', 'LeetCode 题目')}",
+        f"- 难度：{problem.get('difficulty', '未知')}",
+    ]
+    tags = problem.get("tags", [])
+    if tags:
+        parts.append(f"- 标签：{', '.join(tags)}")
+    if problem.get("leetcode_url"):
+        parts.append(f"- 来源：{problem['leetcode_url']}")
+    if problem.get("paid_only"):
+        parts.append("- 注意：该题可能为会员题，在线接口返回的题面可能不完整。")
+    parts.append("")
+    parts.append(problem.get("description", ""))
+    return "\n".join(parts).strip()
+
+
+def _infer_problem_title(problem_desc: str) -> str:
+    """从自定义/在线题目描述中推断报告标题。"""
+    for line in (problem_desc or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip() or "自定义题目"
+        if stripped:
+            return stripped[:40]
+    return "自定义题目"
 
 
 def get_code_explanation(code: str, api_key: str) -> str:
@@ -249,7 +322,7 @@ def build_ui():
     """构建 Gradio 交互界面"""
 
     # 预设题目下拉列表
-    problem_titles = ["（自定义题目）"] + get_all_titles()
+    problem_titles = [CUSTOM_PROBLEM_LABEL] + get_all_titles()
 
     # 自定义 CSS
     custom_css = """
@@ -299,9 +372,36 @@ def build_ui():
                 # 预设题目选择
                 problem_selector = gr.Dropdown(
                     choices=problem_titles,
-                    value="（自定义题目）",
+                    value=CUSTOM_PROBLEM_LABEL,
                     label="选择预设题目（可选）",
                 )
+
+                with gr.Accordion("🌐 LeetCode 在线题库", open=False):
+                    with gr.Row():
+                        leetcode_keyword = gr.Textbox(
+                            label="关键词",
+                            placeholder="例：two sum / 两数之和 / binary search",
+                            scale=2,
+                        )
+                        leetcode_difficulty = gr.Dropdown(
+                            choices=["全部", "简单", "中等", "困难"],
+                            value="全部",
+                            label="难度",
+                            scale=1,
+                        )
+                    leetcode_search_btn = gr.Button("检索 LeetCode", variant="secondary")
+                    leetcode_search_status = gr.Markdown(value="")
+                    leetcode_results = gr.Dataframe(
+                        headers=["编号", "标题", "难度", "标签", "Slug", "会员题"],
+                        value=[],
+                        label="检索结果",
+                        interactive=False,
+                    )
+                    leetcode_slug_input = gr.Textbox(
+                        label="题目链接或 Slug",
+                        placeholder="例：two-sum 或 https://leetcode.cn/problems/two-sum/",
+                    )
+                    leetcode_import_btn = gr.Button("导入题目到输入区", variant="primary")
 
                 # 题目描述
                 problem_desc_input = gr.Textbox(
@@ -414,6 +514,20 @@ def build_ui():
             fn=load_problem_template,
             inputs=[problem_selector],
             outputs=[code_input, problem_desc_input, test_input, test_expected],
+        )
+
+        # LeetCode 在线检索
+        leetcode_search_btn.click(
+            fn=search_leetcode,
+            inputs=[leetcode_keyword, leetcode_difficulty],
+            outputs=[leetcode_results, leetcode_search_status],
+        )
+
+        # LeetCode 在线导入
+        leetcode_import_btn.click(
+            fn=load_leetcode_template,
+            inputs=[leetcode_slug_input],
+            outputs=[code_input, problem_desc_input, test_input, test_expected, status_output],
         )
 
         # ==================== 页脚 ====================
