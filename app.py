@@ -251,6 +251,21 @@ def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str
         return [], f"LeetCode 检索失败：{str(e)}"
 
 
+def fill_slug_from_result(results: list[list[str]], evt: gr.SelectData) -> object:
+    """点击检索结果表格时，把对应行的 Slug 填入输入框。"""
+    if not evt or evt.index is None:
+        return gr.update()
+
+    row_index = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
+    try:
+        row = results[row_index]
+        slug = row[4]
+    except (TypeError, IndexError):
+        slug = evt.value if isinstance(evt.value, str) else ""
+
+    return slug or gr.update()
+
+
 def import_generated_variant(selected_variant: str, variants: list[dict], language: str) -> tuple[object, object, object, object, str]:
     """把生成的变式题导入左侧输入区。"""
     index = _parse_variant_index(selected_variant)
@@ -623,6 +638,13 @@ def build_ui():
             fn=search_leetcode,
             inputs=[leetcode_keyword, leetcode_difficulty],
             outputs=[leetcode_results, leetcode_search_status],
+        )
+
+        # 点击检索结果中的任意单元格 → 自动填充该行 Slug
+        leetcode_results.select(
+            fn=fill_slug_from_result,
+            inputs=[leetcode_results],
+            outputs=[leetcode_slug_input],
         )
 
         # LeetCode 在线导入
