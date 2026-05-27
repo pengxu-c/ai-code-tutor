@@ -403,6 +403,19 @@ def build_ui():
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
     }
+    .gradio-container {
+        max-width: 1600px !important;
+    }
+    .main-tabs .tab-nav {
+        border-bottom: 1px solid #e5e7eb;
+        margin-bottom: 16px;
+    }
+    .section-panel {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        background: #ffffff;
+    }
     footer {
         display: none !important;
     }
@@ -426,128 +439,146 @@ def build_ui():
         # ==================== 配置区 ====================
         with gr.Accordion("⚙️ 配置", open=False):
             api_key_input = gr.Textbox(
-                label="DeepSeek API Key（留空则使用环境变量 DEEPSEEK_API_KEY）",
+                label="DeepSeek API Key（留空则使用内置默认DeepSeek API）",
                 type="password",
                 placeholder="sk-...",
             )
 
         # ==================== 主界面 ====================
-        with gr.Row():
-            # ---- 左侧：输入区 ----
-            with gr.Column(scale=1):
-                gr.Markdown("### 📝 输入")
+        with gr.Tabs(elem_classes=["main-tabs"]):
+            with gr.Tab("输入与诊断"):
+                with gr.Row():
+                    # ---- 左侧：输入区 ----
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 📝 输入")
 
-                language_selector = gr.Dropdown(
-                    choices=get_language_choices(),
-                    value="Python3",
-                    label="编程语言",
-                )
+                        language_selector = gr.Dropdown(
+                            choices=get_language_choices(),
+                            value="Python3",
+                            label="编程语言",
+                        )
 
-                with gr.Accordion("🌐 LeetCode 在线题库", open=False):
-                    with gr.Row():
-                        leetcode_keyword = gr.Textbox(
-                            label="关键词",
-                            placeholder="例：two sum / 两数之和 / binary search",
-                            scale=2,
+                        # 题目描述
+                        problem_desc_input = gr.Textbox(
+                            label="题目描述",
+                            placeholder="请输入题目描述，例如：给定一个整数数组 nums 和一个目标值 target...",
+                            lines=4,
                         )
-                        leetcode_difficulty = gr.Dropdown(
-                            choices=["全部", "简单", "中等", "困难"],
-                            value="全部",
-                            label="难度",
-                            scale=1,
+
+                        # 代码输入
+                        code_input = gr.Code(
+                            label="你的代码",
+                            language=get_gradio_language("Python3"),
+                            lines=12,
                         )
-                    leetcode_search_btn = gr.Button("检索 LeetCode", variant="secondary")
-                    leetcode_search_status = gr.Markdown(value="")
-                    leetcode_results = gr.Dataframe(
-                        headers=["编号", "标题", "难度", "标签", "Slug", "会员题"],
-                        value=[],
-                        label="检索结果",
-                        interactive=False,
+
+                        # 报错信息
+                        error_input = gr.Textbox(
+                            label="报错信息 / 运行结果",
+                            placeholder="粘贴报错信息或运行结果...",
+                            lines=3,
+                        )
+
+                        # 测试用例
+                        with gr.Row():
+                            test_input = gr.Textbox(
+                                label="测试输入",
+                                placeholder="例：nums=[2,7,11,15], target=9",
+                                scale=1,
+                            )
+                            test_expected = gr.Textbox(
+                                label="期望输出",
+                                placeholder="例：[0,1]",
+                                scale=1,
+                            )
+
+                        # 选项
+                        gen_variants = gr.Checkbox(
+                            label="生成变式训练题",
+                            value=True,
+                        )
+
+                        # 按钮
+                        with gr.Row():
+                            diagnose_btn = gr.Button(
+                                "🔍 开始诊断",
+                                variant="primary",
+                                size="lg",
+                            )
+                            explain_btn = gr.Button(
+                                "📖 代码解释",
+                                variant="secondary",
+                            )
+
+                    # ---- 右侧：输出区 ----
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 📊 诊断结果")
+
+                        status_output = gr.Markdown(
+                            label="状态",
+                            value="等待输入...",
+                            elem_classes=["status-bar"],
+                        )
+
+                        report_output = gr.Markdown(
+                            label="讲解报告",
+                            value="诊断报告将在此处显示...",
+                        )
+
+                        with gr.Row():
+                            variant_selector = gr.Dropdown(
+                                choices=[],
+                                label="生成的变式题",
+                                scale=3,
+                            )
+                            import_variant_btn = gr.Button(
+                                "导入变式题",
+                                variant="secondary",
+                                scale=1,
+                            )
+
+            with gr.Tab("题库"):
+                gr.Markdown("### 📚 LeetCode 在线题库")
+                with gr.Row():
+                    leetcode_keyword = gr.Textbox(
+                        label="关键词",
+                        placeholder="例：two sum / 两数之和 / binary search",
+                        scale=2,
                     )
-                    leetcode_slug_input = gr.Textbox(
-                        label="题目链接或 Slug",
-                        placeholder="例：two-sum 或 https://leetcode.cn/problems/two-sum/",
+                    leetcode_difficulty = gr.Dropdown(
+                        choices=["全部", "简单", "中等", "困难"],
+                        value="全部",
+                        label="难度",
+                        scale=1,
                     )
+                with gr.Row():
+                    leetcode_search_btn = gr.Button("🔍 检索 LeetCode", variant="secondary")
                     leetcode_import_btn = gr.Button("导入题目到输入区", variant="primary")
-
-                # 题目描述
-                problem_desc_input = gr.Textbox(
-                    label="题目描述",
-                    placeholder="请输入题目描述，例如：给定一个整数数组 nums 和一个目标值 target...",
-                    lines=4,
+                leetcode_search_status = gr.Markdown(value="")
+                leetcode_results = gr.Dataframe(
+                    headers=["编号", "标题", "难度", "标签", "Slug", "会员题"],
+                    value=[],
+                    label="检索结果",
+                    interactive=False,
+                )
+                leetcode_slug_input = gr.Textbox(
+                    label="题目链接或 Slug",
+                    placeholder="例：two-sum 或 https://leetcode.cn/problems/two-sum/",
                 )
 
-                # 代码输入
-                code_input = gr.Code(
-                    label="你的代码",
-                    language=get_gradio_language("Python3"),
-                    lines=12,
+            with gr.Tab("使用指南"):
+                gr.Markdown(
+                    """
+                    ### ℹ️ 使用指南
+
+                    1. 在“题库”中检索 LeetCode 题目，复制结果里的 Slug，或直接粘贴题目链接并导入到输入区。
+                    2. 在“输入与诊断”中选择编程语言，补充错解代码、报错信息和测试用例。
+                    3. 点击“开始诊断”生成结构分析、错误诊断、修复建议、运行验证和变式训练。
+                    4. 诊断后可以在右侧选择生成的变式题，并点击“导入变式题”继续练习。
+
+                    当前 Python3 支持 AST 结构分析和沙箱运行验证；其他语言会跳过 Python 专属步骤，并由大模型按所选语言给出诊断和修复代码。
+                    """
                 )
-
-                # 报错信息
-                error_input = gr.Textbox(
-                    label="报错信息 / 运行结果",
-                    placeholder="粘贴报错信息或运行结果...",
-                    lines=3,
-                )
-
-                # 测试用例
-                with gr.Row():
-                    test_input = gr.Textbox(
-                        label="测试输入",
-                        placeholder="例：nums=[2,7,11,15], target=9",
-                        scale=1,
-                    )
-                    test_expected = gr.Textbox(
-                        label="期望输出",
-                        placeholder="例：[0,1]",
-                        scale=1,
-                    )
-
-                # 选项
-                gen_variants = gr.Checkbox(
-                    label="生成变式训练题",
-                    value=True,
-                )
-
-                # 按钮
-                with gr.Row():
-                    diagnose_btn = gr.Button(
-                        "🔍 开始诊断",
-                        variant="primary",
-                        size="lg",
-                    )
-                    explain_btn = gr.Button(
-                        "📖 代码解释",
-                        variant="secondary",
-                    )
-
-            # ---- 右侧：输出区 ----
-            with gr.Column(scale=1):
-                gr.Markdown("### 📊 诊断结果")
-
-                status_output = gr.Markdown(
-                    label="状态",
-                    value="等待输入...",
-                    elem_classes=["status-bar"],
-                )
-
-                report_output = gr.Markdown(
-                    label="讲解报告",
-                    value="诊断报告将在此处显示...",
-                )
-
-                with gr.Row():
-                    variant_selector = gr.Dropdown(
-                        choices=[],
-                        label="生成的变式题",
-                        scale=3,
-                    )
-                    import_variant_btn = gr.Button(
-                        "导入变式题",
-                        variant="secondary",
-                        scale=1,
-                    )
 
         # ==================== 事件绑定 ====================
         # 诊断按钮
