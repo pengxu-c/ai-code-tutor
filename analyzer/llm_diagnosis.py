@@ -4,6 +4,7 @@ LLM 智能诊断模块
 """
 import json
 import os
+import re
 from typing import Optional
 
 import requests
@@ -178,11 +179,55 @@ class LLMDiagnosis:
         ]
 
         response = self._call_llm(messages, model=self.diagnosis_model, temperature=0.3)
+        error_analysis, fix_suggestion = self._split_diagnosis_response(response)
 
         return {
-            "error_analysis": response,
-            "fix_suggestion": "",  # 已包含在 response 中
+            "error_analysis": error_analysis,
+            "fix_suggestion": fix_suggestion,
         }
+
+    def _split_diagnosis_response(self, response: str) -> tuple[str, str]:
+        """
+        Split the model response into diagnosis and fix sections.
+
+        The prompt asks for:
+        1. 错误定位
+        2. 错误原因分析
+        3. 修复建议
+        4. 知识点总结
+
+        The report has its own top-level "三、修复建议" section, so keep
+        sections 1-2 in "错误诊断" and move sections 3+ into "修复建议".
+        """
+        text = (response or "").strip()
+        if not text:
+            return "", ""
+
+        fix_match = self._find_section_heading(text, {"3", "三"}, "修复")
+        if not fix_match:
+            return text, ""
+
+        error_analysis = text[:fix_match.start()].strip()
+        fix_suggestion = text[fix_match.start():].strip()
+
+        return error_analysis or "（模型未单独返回错误诊断内容）", fix_suggestion
+
+    @staticmethod
+    def _find_section_heading(text: str, numbers: set[str], keyword: str) -> Optional[re.Match]:
+        """Find a Markdown heading such as `### 3. 修复建议` or `## 三、修复建议`."""
+        heading_pattern = re.compile(r"^(#{1,6})\s*(?P<title>.+?)\s*$", re.MULTILINE)
+        number_pattern = re.compile(r"^\s*(?P<num>\d+|[一二三四五六七八九十])\s*[\.\、:：)]?\s*(?P<rest>.*)")
+
+        for match in heading_pattern.finditer(text):
+            title = match.group("title").strip()
+            number_match = number_pattern.match(title)
+            if not number_match:
+                continue
+            number = number_match.group("num")
+            rest = number_match.group("rest")
+            if number in numbers and keyword in rest:
+                return match
+        return None
 
     # ------------------------------------------------------------------
     #  变式题生成

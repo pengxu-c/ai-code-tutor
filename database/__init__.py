@@ -37,11 +37,33 @@ def get_all_titles() -> List[str]:
     return [p.get("title", "") for p in load_problems() if p.get("title")]
 
 
-def get_leetcode_problem(slug_or_url: str, language_slug: str = "python3") -> Dict:
+def get_leetcode_problem(
+    slug_or_url: str,
+    language_slug: str = "python3",
+    leetcode_session: str = "",
+    csrf_token: str = "",
+) -> Dict:
     """在线获取单道 LeetCode 题目。"""
-    return _LEETCODE_CLIENT.fetch_problem(slug_or_url, language_slug=language_slug)
+    return _LEETCODE_CLIENT.fetch_problem(
+        slug_or_url,
+        language_slug=language_slug,
+        leetcode_session=leetcode_session,
+        csrf_token=csrf_token,
+    )
 
 
-def search_leetcode_problems(keyword: str = "", difficulty: str = "", limit: int = 20) -> List[Dict]:
+def search_leetcode_problems(
+    keyword: str = "",
+    difficulty: str = "",
+    limit: int = 20,
+    leetcode_session: str = "",
+    csrf_token: str = "",
+) -> List[Dict]:
     """在线检索 LeetCode 题目列表。"""
-    return _LEETCODE_CLIENT.search(keyword=keyword, difficulty=difficulty, limit=limit)
+    return _LEETCODE_CLIENT.search(
+        keyword=keyword,
+        difficulty=difficulty,
+        limit=limit,
+        leetcode_session=leetcode_session,
+        csrf_token=csrf_token,
+    )

@@ -216,7 +216,13 @@ class LeetCodeClient:
         value = value.strip("/ ")
         return value
 
-    def fetch_problem(self, slug_or_url: str, language_slug: str = "python3") -> dict[str, Any]:
+    def fetch_problem(
+        self,
+        slug_or_url: str,
+        language_slug: str = "python3",
+        leetcode_session: str = "",
+        csrf_token: str = "",
+    ) -> dict[str, Any]:
         slug = self.normalize_slug(slug_or_url)
         if not slug:
             raise ValueError("请输入 LeetCode 题目链接或 titleSlug，例如 two-sum。")
@@ -225,7 +231,13 @@ class LeetCodeClient:
         for endpoint in self.endpoints:
             query = self.QUESTION_QUERY_CN if "leetcode.cn" in endpoint else self.QUESTION_QUERY_GLOBAL
             try:
-                payload = self._graphql(endpoint, query, {"titleSlug": slug})
+                payload = self._graphql(
+                    endpoint,
+                    query,
+                    {"titleSlug": slug},
+                    leetcode_session=leetcode_session,
+                    csrf_token=csrf_token,
+                )
                 question = payload.get("question")
                 if question:
                     return self._format_problem(question, endpoint, language_slug)
@@ -234,7 +246,14 @@ class LeetCodeClient:
 
         raise RuntimeError(f"无法获取 LeetCode 题目：{last_error or slug}")
 
-    def search(self, keyword: str = "", difficulty: str = "", limit: int = 20) -> list[dict[str, Any]]:
+    def search(
+        self,
+        keyword: str = "",
+        difficulty: str = "",
+        limit: int = 20,
+        leetcode_session: str = "",
+        csrf_token: str = "",
+    ) -> list[dict[str, Any]]:
         filters: dict[str, str] = {}
         if keyword.strip():
             filters["searchKeywords"] = keyword.strip()
@@ -252,11 +271,21 @@ class LeetCodeClient:
         for endpoint in self.endpoints:
             query = self.SEARCH_QUERY_CN if "leetcode.cn" in endpoint else self.SEARCH_QUERY_GLOBAL
             try:
-                payload = self._graphql(endpoint, query, variables)
+                payload = self._graphql(
+                    endpoint,
+                    query,
+                    variables,
+                    leetcode_session=leetcode_session,
+                    csrf_token=csrf_token,
+                )
                 data = payload.get("problemsetQuestionList") or {}
                 questions = data.get("questions") or []
                 rows = [self._format_search_row(q) for q in questions]
-                exact_row = self._search_exact_slug(keyword)
+                exact_row = self._search_exact_slug(
+                    keyword,
+                    leetcode_session=leetcode_session,
+                    csrf_token=csrf_token,
+                )
                 if exact_row:
                     rows = [r for r in rows if r.get("slug") != exact_row.get("slug")]
                     rows.insert(0, exact_row)
@@ -266,10 +295,19 @@ class LeetCodeClient:
 
         raise RuntimeError(f"无法检索 LeetCode 题库：{last_error}")
 
-    def _graphql(self, endpoint: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    def _graphql(
+        self,
+        endpoint: str,
+        query: str,
+        variables: dict[str, Any],
+        leetcode_session: str = "",
+        csrf_token: str = "",
+    ) -> dict[str, Any]:
+        headers = self._build_auth_headers(endpoint, leetcode_session, csrf_token)
         response = self.session.post(
             endpoint,
             json={"query": query, "variables": variables},
+            headers=headers,
             timeout=self.timeout,
         )
         try:
@@ -281,6 +319,47 @@ class LeetCodeClient:
             messages = "; ".join(e.get("message", "unknown error") for e in body["errors"])
             raise RuntimeError(messages)
         return body.get("data") or {}
+
+    def _build_auth_headers(self, endpoint: str, leetcode_session: str = "", csrf_token: str = "") -> dict[str, str]:
+        """Build request headers with optional LeetCode login cookies."""
+        session_value, csrf_value = self._normalize_auth_values(leetcode_session, csrf_token)
+        headers = dict(self.session.headers)
+        host = "leetcode.cn" if "leetcode.cn" in endpoint else "leetcode.com"
+        headers["Referer"] = f"https://{host}/problemset/"
+
+        cookies = []
+        if session_value:
+            cookies.append(f"LEETCODE_SESSION={session_value}")
+        if csrf_value:
+            cookies.append(f"csrftoken={csrf_value}")
+            headers["X-CSRFToken"] = csrf_value
+        if cookies:
+            headers["Cookie"] = "; ".join(cookies)
+        return headers
+
+    @staticmethod
+    def _normalize_auth_values(leetcode_session: str = "", csrf_token: str = "") -> tuple[str, str]:
+        """Accept raw token values, `name=value`, or a full Cookie header."""
+        session_value = (leetcode_session or "").strip()
+        csrf_value = (csrf_token or "").strip()
+
+        cookie_text = session_value if "=" in session_value else ""
+        if cookie_text:
+            pairs = {}
+            for part in cookie_text.split(";"):
+                if "=" not in part:
+                    continue
+                key, value = part.split("=", 1)
+                pairs[key.strip()] = value.strip()
+            session_value = pairs.get("LEETCODE_SESSION", session_value)
+            csrf_value = csrf_value or pairs.get("csrftoken", "")
+
+        if session_value.startswith("LEETCODE_SESSION="):
+            session_value = session_value.split("=", 1)[1].strip()
+        if csrf_value.startswith("csrftoken="):
+            csrf_value = csrf_value.split("=", 1)[1].strip()
+
+        return session_value, csrf_value
 
     def _format_problem(self, question: dict[str, Any], endpoint: str, language_slug: str) -> dict[str, Any]:
         is_cn = "leetcode.cn" in endpoint
@@ -341,7 +420,12 @@ class LeetCodeClient:
             "paid_only": bool(question.get("paidOnly")),
         }
 
-    def _search_exact_slug(self, keyword: str) -> Optional[dict[str, Any]]:
+    def _search_exact_slug(
+        self,
+        keyword: str,
+        leetcode_session: str = "",
+        csrf_token: str = "",
+    ) -> Optional[dict[str, Any]]:
         keyword = (keyword or "").strip()
         if not keyword or re.search(r"[\u4e00-\u9fff]", keyword):
             return None
@@ -351,7 +435,11 @@ class LeetCodeClient:
             return None
 
         try:
-            problem = self.fetch_problem(slug)
+            problem = self.fetch_problem(
+                slug,
+                leetcode_session=leetcode_session,
+                csrf_token=csrf_token,
+            )
         except Exception:
             return None
 

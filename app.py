@@ -14,6 +14,7 @@ import os
 import sys
 import json
 import re
+import socket
 import time
 import traceback
 
@@ -232,10 +233,21 @@ def run_diagnosis(
 # ======================================================================
 #  辅助功能
 # ======================================================================
-def search_leetcode(keyword: str, difficulty: str) -> tuple[list[list[str]], str]:
+def search_leetcode(
+    keyword: str,
+    difficulty: str,
+    leetcode_session: str = "",
+    leetcode_csrf_token: str = "",
+) -> tuple[list[list[str]], str]:
     """在线检索 LeetCode 题目。"""
     try:
-        rows = search_leetcode_problems(keyword=keyword, difficulty=difficulty, limit=20)
+        rows = search_leetcode_problems(
+            keyword=keyword,
+            difficulty=difficulty,
+            limit=20,
+            leetcode_session=leetcode_session,
+            csrf_token=leetcode_csrf_token,
+        )
         table = [
             [
                 r.get("id", ""),
@@ -319,15 +331,27 @@ def import_generated_variant(selected_variant: str, variants: list[dict], langua
     )
 
 
-def load_leetcode_template(slug_or_url: str, language: str) -> tuple[object, str, str, str, str]:
+def load_leetcode_template(
+    slug_or_url: str,
+    language: str,
+    leetcode_session: str = "",
+    leetcode_csrf_token: str = "",
+) -> tuple[object, str, str, str, str]:
     """从 LeetCode 在线导入题目模板。"""
     try:
-        problem = get_leetcode_problem(slug_or_url, language_slug=get_leetcode_slug(language))
+        problem = get_leetcode_problem(
+            slug_or_url,
+            language_slug=get_leetcode_slug(language),
+            leetcode_session=leetcode_session,
+            csrf_token=leetcode_csrf_token,
+        )
         examples = problem.get("examples", [])
         test_in = str(examples[0].get("input", "")) if examples else ""
         test_out = str(examples[0].get("output", "")) if examples else ""
         desc = _format_leetcode_description(problem)
         status = f"已导入 LeetCode 题目：{problem.get('title', '')}"
+        if (leetcode_session or leetcode_csrf_token) and status.startswith("已导入"):
+            status += "（已使用 LeetCode 登录态）"
         if problem.get("paid_only"):
             status += "（会员题，题面可能不完整）"
         code_update = gr.update(
@@ -339,9 +363,19 @@ def load_leetcode_template(slug_or_url: str, language: str) -> tuple[object, str
         return gr.update(language=get_gradio_language(language)), "", "", "", f"LeetCode 导入失败：{str(e)}"
 
 
-def load_leetcode_template_and_switch(slug_or_url: str, language: str) -> tuple[object, str, str, str, str, object]:
+def load_leetcode_template_and_switch(
+    slug_or_url: str,
+    language: str,
+    leetcode_session: str = "",
+    leetcode_csrf_token: str = "",
+) -> tuple[object, str, str, str, str, object]:
     """导入 LeetCode 题目，并切回输入与诊断页。"""
-    code, desc, test_in, test_out, status = load_leetcode_template(slug_or_url, language)
+    code, desc, test_in, test_out, status = load_leetcode_template(
+        slug_or_url,
+        language,
+        leetcode_session=leetcode_session,
+        leetcode_csrf_token=leetcode_csrf_token,
+    )
     target_tab = "input" if status.startswith("已导入") else "library"
     return code, desc, test_in, test_out, status, gr.update(selected=target_tab)
 
@@ -433,17 +467,137 @@ def get_code_explanation(code: str, language: str, api_key: str) -> str:
         return f"解释失败：{str(e)}"
 
 
+def _find_available_port(preferred_port: int, host: str = "127.0.0.1", retries: int = 10) -> int:
+    """Return preferred_port if available, otherwise try the next few ports."""
+    for port in range(preferred_port, preferred_port + retries + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            try:
+                sock.bind((host, port))
+            except OSError:
+                continue
+            return port
+    return preferred_port
+
+
 # ======================================================================
 #  Gradio 界面构建
 # ======================================================================
 def build_ui():
     """构建 Gradio 交互界面"""
 
+    code_font_js = """
+    (fontSize) => {
+        const size = Number(fontSize) || 14;
+        document.documentElement.style.setProperty("--code-editor-font-size", `${size}px`);
+    }
+    """
+    code_expand_js = """
+    (expanded) => {
+        const height = expanded ? "560px" : "300px";
+        document.documentElement.style.setProperty("--code-editor-min-height", height);
+        document.body.classList.toggle("code-area-expanded", Boolean(expanded));
+    }
+    """
+    theme_mode_js = """
+    (mode) => {
+        const applyTheme = (selectedMode) => {
+            const normalized = selectedMode || "跟随系统";
+            document.body.dataset.themeMode = normalized;
+            const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+            const dark = normalized === "深色" || (normalized === "跟随系统" && prefersDark);
+            const targets = [document.documentElement, document.body];
+            for (const target of targets) {
+                target.classList.toggle("app-light-theme", !dark);
+                target.classList.toggle("app-dark-theme", dark);
+            }
+            document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        };
+        applyTheme(mode);
+        if (!window.__aiCodeTutorThemeListener && window.matchMedia) {
+            const media = window.matchMedia("(prefers-color-scheme: dark)");
+            media.addEventListener("change", () => {
+                if (document.body.dataset.themeMode === "跟随系统") {
+                    applyTheme("跟随系统");
+                }
+            });
+            window.__aiCodeTutorThemeListener = true;
+        }
+    }
+    """
+    custom_head = """
+    <script>
+    (() => {
+        const applySystemTheme = () => {
+            const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+            const targets = [document.documentElement, document.body];
+            for (const target of targets) {
+                target.classList.toggle("app-light-theme", !prefersDark);
+                target.classList.toggle("app-dark-theme", prefersDark);
+            }
+            document.documentElement.style.colorScheme = prefersDark ? "dark" : "light";
+        };
+        applySystemTheme();
+        if (window.matchMedia) {
+            window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+                if (!document.body.dataset.themeMode || document.body.dataset.themeMode === "跟随系统") {
+                    applySystemTheme();
+                }
+            });
+        }
+    })();
+    </script>
+    """
+
     # 自定义 CSS
     custom_css = """
+    :root {
+        --code-editor-font-size: 14px;
+        --code-editor-min-height: 300px;
+    }
     .main-title {
         text-align: center;
         margin-bottom: 10px;
+    }
+    .app-light-theme,
+    .app-light-theme .gradio-container {
+        color-scheme: light;
+        --body-background-fill: #f8fafc;
+        --body-text-color: #0f172a;
+        --block-background-fill: #ffffff;
+        --block-border-color: #e5e7eb;
+        --input-background-fill: #ffffff;
+        --input-border-color: #d1d5db;
+        --button-secondary-background-fill: #f8fafc;
+    }
+    .app-dark-theme,
+    .app-dark-theme .gradio-container {
+        color-scheme: dark;
+        --body-background-fill: #0f172a;
+        --body-text-color: #e5e7eb;
+        --block-background-fill: #111827;
+        --block-border-color: #334155;
+        --input-background-fill: #0b1220;
+        --input-border-color: #475569;
+        --button-secondary-background-fill: #1f2937;
+    }
+    .app-dark-theme .gradio-container,
+    .app-dark-theme .main-tabs,
+    .app-dark-theme .section-panel {
+        background: #0f172a;
+        color: #e5e7eb;
+    }
+    .app-dark-theme .report-view .report-nav {
+        background: #111827;
+        border-color: #334155;
+    }
+    .app-dark-theme .report-view .report-nav-title,
+    .app-dark-theme .report-view .report-section-summary {
+        color: #dbeafe;
+    }
+    .app-dark-theme .report-view .report-nav a,
+    .app-dark-theme .report-view .report-section-summary:hover {
+        color: #93c5fd;
     }
     .status-bar {
         padding: 10px;
@@ -463,6 +617,77 @@ def build_ui():
         border-radius: 8px;
         padding: 16px;
         background: #ffffff;
+    }
+    .code-settings-row {
+        align-items: end;
+    }
+    #code-input .cm-editor,
+    #code-input .cm-content,
+    #code-input .cm-gutters,
+    #code-input textarea,
+    #code-input pre,
+    #code-input code {
+        font-size: var(--code-editor-font-size) !important;
+    }
+    #code-input .cm-editor {
+        min-height: var(--code-editor-min-height) !important;
+    }
+    #code-input .cm-scroller {
+        min-height: var(--code-editor-min-height) !important;
+    }
+    #code-input {
+        transition: min-height 0.2s ease;
+    }
+    .code-area-expanded #code-input {
+        width: 100%;
+    }
+    .report-view .report-nav {
+        border: 1px solid #dbeafe;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin: 12px 0 18px;
+        background: #f8fbff;
+    }
+    .report-view .report-nav-title {
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #1e3a5f;
+    }
+    .report-view .report-nav ul {
+        margin: 0;
+        padding-left: 18px;
+    }
+    .report-view .report-nav li {
+        margin: 4px 0;
+    }
+    .report-view .report-nav a {
+        color: #2563eb;
+        text-decoration: none;
+    }
+    .report-view .report-nav a:hover {
+        text-decoration: underline;
+    }
+    .report-view .report-section {
+        border-top: 1px solid #e5e7eb;
+        padding: 8px 0 12px;
+        scroll-margin-top: 16px;
+    }
+    .report-view .report-section-summary {
+        cursor: pointer;
+        font-size: 1.55rem;
+        font-weight: 800;
+        line-height: 1.35;
+        color: #1e3a5f;
+        list-style-position: inside;
+    }
+    .report-view .report-section-summary:hover {
+        color: #2563eb;
+    }
+    .report-view .report-section[open] .report-section-summary {
+        margin-bottom: 10px;
+    }
+    .report-view a[id] {
+        scroll-margin-top: 16px;
     }
     footer {
         display: none !important;
@@ -491,6 +716,21 @@ def build_ui():
                 type="password",
                 placeholder="sk-...",
             )
+            theme_mode = gr.Dropdown(
+                choices=["跟随系统", "浅色", "深色"],
+                value="跟随系统",
+                label="页面主题",
+            )
+            leetcode_session_input = gr.Textbox(
+                label="LeetCode Session（会员题导入，可留空）",
+                type="password",
+                placeholder="LEETCODE_SESSION 的值，或完整 Cookie 字符串",
+            )
+            leetcode_csrf_input = gr.Textbox(
+                label="LeetCode CSRF Token（会员题导入，可留空）",
+                type="password",
+                placeholder="csrftoken 的值",
+            )
 
         # ==================== 主界面 ====================
         with gr.Tabs(selected="input", elem_classes=["main-tabs"]) as main_tabs:
@@ -514,10 +754,26 @@ def build_ui():
                         )
 
                         # 代码输入
+                        with gr.Row(elem_classes=["code-settings-row"]):
+                            code_font_size = gr.Slider(
+                                minimum=12,
+                                maximum=24,
+                                step=1,
+                                value=14,
+                                label="代码字体大小",
+                                scale=3,
+                            )
+                            code_expand = gr.Checkbox(
+                                label="放大代码区",
+                                value=False,
+                                scale=1,
+                            )
+
                         code_input = gr.Code(
                             label="你的代码",
                             language=get_gradio_language("Python3"),
                             lines=12,
+                            elem_id="code-input",
                         )
 
                         # 报错信息
@@ -571,6 +827,7 @@ def build_ui():
                         report_output = gr.Markdown(
                             label="讲解报告",
                             value="诊断报告将在此处显示...",
+                            elem_classes=["report-view"],
                         )
 
                         with gr.Row():
@@ -660,10 +917,32 @@ def build_ui():
             outputs=[code_input],
         )
 
+        # 代码区显示设置
+        code_font_size.change(
+            fn=None,
+            inputs=[code_font_size],
+            outputs=None,
+            js=code_font_js,
+            show_progress="hidden",
+        )
+        code_expand.change(
+            fn=None,
+            inputs=[code_expand],
+            outputs=None,
+            js=code_expand_js,
+            show_progress="hidden",
+        )
+        theme_mode.change(
+            fn=None,
+            inputs=[theme_mode],
+            outputs=None,
+            js=theme_mode_js,
+            show_progress="hidden",
+        )
         # LeetCode 在线检索
         leetcode_search_btn.click(
             fn=search_leetcode,
-            inputs=[leetcode_keyword, leetcode_difficulty],
+            inputs=[leetcode_keyword, leetcode_difficulty, leetcode_session_input, leetcode_csrf_input],
             outputs=[leetcode_results, leetcode_search_status],
         )
 
@@ -677,7 +956,7 @@ def build_ui():
         # LeetCode 在线导入
         leetcode_import_btn.click(
             fn=load_leetcode_template_and_switch,
-            inputs=[leetcode_slug_input, language_selector],
+            inputs=[leetcode_slug_input, language_selector, leetcode_session_input, leetcode_csrf_input],
             outputs=[code_input, problem_desc_input, test_input, test_expected, status_output, main_tabs],
         )
 
@@ -697,14 +976,23 @@ def build_ui():
             **项目4：AI编程题讲解机器人 — 错解代码诊断与变式训练系统**
             """
         )
-
+    launch_port = _find_available_port(GRADIO_SERVER_PORT, GRADIO_SERVER_NAME)
+    if launch_port != GRADIO_SERVER_PORT:
+        logger.warning(
+            "端口 %s 已被占用，自动改用端口 %s。访问地址：http://%s:%s",
+            GRADIO_SERVER_PORT,
+            launch_port,
+            GRADIO_SERVER_NAME,
+            launch_port,
+        )
 
     demo.launch(
         server_name=GRADIO_SERVER_NAME,
-        server_port=GRADIO_SERVER_PORT,
+        server_port=launch_port,
         share=GRADIO_SHARE,
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="purple"),
         css=custom_css,
+        head=custom_head,
     )
 
 
