@@ -554,6 +554,44 @@ def build_ui():
     :root {
         --code-editor-font-size: 14px;
         --code-editor-min-height: 300px;
+        --app-bg: #f4f7fb;
+        --app-bg-soft: #eef6f6;
+        --app-surface: #ffffff;
+        --app-surface-muted: #f8fafc;
+        --app-border: #dbe3ee;
+        --app-border-strong: #bfd4ef;
+        --app-text: #102033;
+        --app-text-muted: #5b6b7f;
+        --app-primary: #2563eb;
+        --app-primary-strong: #1d4ed8;
+        --app-indigo: #4338ca;
+        --app-teal: #0f766e;
+        --app-amber: #b45309;
+        --app-rose: #be123c;
+        --app-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+        --app-shadow-soft: 0 10px 26px rgba(15, 23, 42, 0.06);
+        --app-font-sans: "Inter", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+        --app-font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    body {
+        background:
+            radial-gradient(circle at top left, rgba(15, 118, 110, 0.10), transparent 28rem),
+            linear-gradient(180deg, #f8fbff 0%, var(--app-bg) 46%, #eef2f7 100%) !important;
+        color: var(--app-text);
+        font-family: var(--app-font-sans);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+    .gradio-container,
+    .gradio-container * {
+        font-family: var(--app-font-sans);
+    }
+    code,
+    pre,
+    .cm-editor,
+    .cm-content,
+    .cm-gutters {
+        font-family: var(--app-font-mono) !important;
     }
     .main-title {
         text-align: center;
@@ -572,6 +610,22 @@ def build_ui():
     }
     .app-dark-theme,
     .app-dark-theme .gradio-container {
+        --app-bg: #0b1120;
+        --app-bg-soft: #102033;
+        --app-surface: #111827;
+        --app-surface-muted: #0f172a;
+        --app-border: #334155;
+        --app-border-strong: #475569;
+        --app-text: #e5e7eb;
+        --app-text-muted: #a7b4c6;
+        --app-primary: #60a5fa;
+        --app-primary-strong: #93c5fd;
+        --app-indigo: #a5b4fc;
+        --app-teal: #5eead4;
+        --app-amber: #fbbf24;
+        --app-rose: #fb7185;
+        --app-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        --app-shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.22);
         color-scheme: dark;
         --body-background-fill: #0f172a;
         --body-text-color: #e5e7eb;
@@ -584,12 +638,18 @@ def build_ui():
     .app-dark-theme .gradio-container,
     .app-dark-theme .main-tabs,
     .app-dark-theme .section-panel {
-        background: #0f172a;
+        background: var(--app-bg);
         color: #e5e7eb;
     }
+    body.app-dark-theme,
+    html.app-dark-theme body {
+        background:
+            radial-gradient(circle at top left, rgba(94, 234, 212, 0.10), transparent 28rem),
+            linear-gradient(180deg, #0f172a 0%, #0b1120 54%, #111827 100%) !important;
+    }
     .app-dark-theme .report-view .report-nav {
-        background: #111827;
-        border-color: #334155;
+        background: var(--app-surface-muted);
+        border-color: var(--app-border);
     }
     .app-dark-theme .report-view .report-nav-title,
     .app-dark-theme .report-view .report-section-summary {
@@ -600,26 +660,160 @@ def build_ui():
         color: #93c5fd;
     }
     .status-bar {
-        padding: 10px;
+        padding: 14px 16px;
         border-radius: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background:
+            linear-gradient(135deg, rgba(29, 78, 216, 0.96) 0%, rgba(15, 118, 110, 0.98) 100%),
+            #1d4ed8;
+        color: #ffffff !important;
+        box-shadow: var(--app-shadow-soft);
+        font-weight: 750;
+        letter-spacing: 0;
+        text-shadow: 0 1px 1px rgba(15, 23, 42, 0.28);
+    }
+    .status-bar,
+    .status-bar *,
+    .status-bar p,
+    .status-bar span,
+    .status-bar strong,
+    .status-bar em,
+    .status-bar a {
+        color: #ffffff !important;
+    }
+    .status-bar p {
+        margin: 0 !important;
+        font-size: 1.03rem;
+        line-height: 1.6;
     }
     .gradio-container {
-        max-width: 1600px !important;
+        max-width: 1680px !important;
+        padding: 24px !important;
+        background: transparent !important;
+    }
+    .app-header {
+        border: 1px solid rgba(191, 212, 239, 0.78);
+        border-radius: 8px;
+        padding: 22px 26px 20px;
+        margin-bottom: 18px;
+        background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.90)),
+            linear-gradient(90deg, rgba(37, 99, 235, 0.08), rgba(15, 118, 110, 0.10));
+        box-shadow: var(--app-shadow);
+    }
+    .app-header h1 {
+        margin: 0 0 6px !important;
+        color: var(--app-primary-strong);
+        font-size: clamp(2rem, 3.2vw, 3rem);
+        font-weight: 900;
+        letter-spacing: 0;
+    }
+    .app-header h3,
+    .app-header p {
+        margin-top: 6px !important;
+        color: var(--app-text-muted);
+        font-weight: 600;
+    }
+    .app-dark-theme .app-header {
+        background:
+            linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.94)),
+            linear-gradient(90deg, rgba(96, 165, 250, 0.10), rgba(94, 234, 212, 0.09));
+        border-color: var(--app-border);
+    }
+    .config-panel {
+        border: 1px solid var(--app-border) !important;
+        border-radius: 8px !important;
+        margin-bottom: 18px !important;
+        background: rgba(255, 255, 255, 0.78) !important;
+        box-shadow: var(--app-shadow-soft);
+        overflow: hidden;
+    }
+    .app-dark-theme .config-panel {
+        background: rgba(17, 24, 39, 0.82) !important;
     }
     .main-tabs .tab-nav {
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: 1px solid var(--app-border);
         margin-bottom: 16px;
     }
-    .section-panel {
-        border: 1px solid #e5e7eb;
+    .main-tabs button[role="tab"] {
+        border-radius: 8px 8px 0 0 !important;
+        font-weight: 700 !important;
+    }
+    .main-tabs button[aria-selected="true"] {
+        color: var(--app-primary) !important;
+        border-bottom-color: var(--app-primary) !important;
+    }
+    .work-panel,
+    .result-panel,
+    .library-panel,
+    .guide-panel {
+        border: 1px solid var(--app-border);
         border-radius: 8px;
         padding: 16px;
-        background: #ffffff;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: var(--app-shadow-soft);
+    }
+    .result-panel {
+        background: rgba(255, 255, 255, 0.94);
+    }
+    .app-dark-theme .work-panel,
+    .app-dark-theme .result-panel,
+    .app-dark-theme .library-panel,
+    .app-dark-theme .guide-panel {
+        background: rgba(17, 24, 39, 0.88);
+        border-color: var(--app-border);
+    }
+    .panel-heading h3 {
+        margin-top: 0 !important;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--app-border);
+        color: var(--app-indigo);
+        font-weight: 850;
+    }
+    .section-panel {
+        border: 1px solid var(--app-border);
+        border-radius: 8px;
+        padding: 16px;
+        background: var(--app-surface);
+    }
+    label,
+    .wrap label,
+    .block label {
+        color: var(--app-text) !important;
+        font-weight: 750 !important;
+    }
+    input,
+    textarea,
+    select {
+        border-radius: 8px !important;
+    }
+    .form,
+    .block {
+        border-color: var(--app-border) !important;
+    }
+    button {
+        border-radius: 8px !important;
+    }
+    button.primary {
+        background: linear-gradient(135deg, #2563eb, #0f766e) !important;
+        border: none !important;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+    }
+    button.secondary {
+        border-color: var(--app-border-strong) !important;
+        color: var(--app-primary) !important;
+        background: var(--app-surface-muted) !important;
+    }
+    button:hover {
+        transform: translateY(-1px);
+        transition: transform 0.14s ease, box-shadow 0.14s ease;
     }
     .code-settings-row {
         align-items: end;
+        padding: 10px 12px;
+        margin: 10px 0 8px;
+        border: 1px solid var(--app-border);
+        border-radius: 8px;
+        background: var(--app-surface-muted);
     }
     #code-input .cm-editor,
     #code-input .cm-content,
@@ -638,20 +832,28 @@ def build_ui():
     #code-input {
         transition: min-height 0.2s ease;
     }
+    #code-input > label,
+    #code-input .label-wrap {
+        border-radius: 8px 8px 0 0 !important;
+    }
+    #code-input .cm-editor {
+        border-radius: 0 0 8px 8px;
+        border-color: var(--app-border) !important;
+    }
     .code-area-expanded #code-input {
         width: 100%;
     }
     .report-view .report-nav {
-        border: 1px solid #dbeafe;
+        border: 1px solid var(--app-border-strong);
         border-radius: 8px;
         padding: 12px 14px;
         margin: 12px 0 18px;
-        background: #f8fbff;
+        background: linear-gradient(180deg, #f8fbff, #eef6ff);
     }
     .report-view .report-nav-title {
         font-weight: 700;
         margin-bottom: 6px;
-        color: #1e3a5f;
+        color: var(--app-indigo);
     }
     .report-view .report-nav ul {
         margin: 0;
@@ -661,15 +863,16 @@ def build_ui():
         margin: 4px 0;
     }
     .report-view .report-nav a {
-        color: #2563eb;
+        color: var(--app-primary);
         text-decoration: none;
+        font-weight: 650;
     }
     .report-view .report-nav a:hover {
         text-decoration: underline;
     }
     .report-view .report-section {
-        border-top: 1px solid #e5e7eb;
-        padding: 8px 0 12px;
+        border-top: 1px solid var(--app-border);
+        padding: 10px 0 14px;
         scroll-margin-top: 16px;
     }
     .report-view .report-section-summary {
@@ -677,17 +880,65 @@ def build_ui():
         font-size: 1.55rem;
         font-weight: 800;
         line-height: 1.35;
-        color: #1e3a5f;
+        color: var(--app-indigo);
         list-style-position: inside;
     }
     .report-view .report-section-summary:hover {
-        color: #2563eb;
+        color: var(--app-primary);
     }
     .report-view .report-section[open] .report-section-summary {
         margin-bottom: 10px;
     }
     .report-view a[id] {
         scroll-margin-top: 16px;
+    }
+    .report-view pre {
+        border-radius: 8px !important;
+        border: 1px solid var(--app-border);
+        background: #f8fafc !important;
+    }
+    .report-view code {
+        border-radius: 6px;
+        padding: 1px 4px;
+        color: #0f4f78;
+        background: #eef6ff;
+        font-weight: 650;
+    }
+    .report-view h1,
+    .report-view h2,
+    .report-view h3,
+    .report-view h4 {
+        color: var(--app-indigo);
+        font-weight: 850;
+    }
+    .report-view strong {
+        color: var(--app-primary-strong);
+        font-weight: 850;
+    }
+    .report-view li::marker {
+        color: var(--app-teal);
+    }
+    .report-view p,
+    .report-view li {
+        color: var(--app-text);
+        line-height: 1.82;
+    }
+    .app-dark-theme .report-view pre {
+        background: #0b1220 !important;
+    }
+    .app-dark-theme .report-view code {
+        color: #bfdbfe;
+        background: #172554;
+    }
+    .library-panel .dataframe,
+    .library-panel table {
+        border-radius: 8px !important;
+        overflow: hidden;
+    }
+    .footer-note {
+        color: var(--app-text-muted);
+        text-align: center;
+        margin-top: 20px;
     }
     footer {
         display: none !important;
@@ -706,11 +957,12 @@ def build_ui():
             ### 错解代码诊断与变式训练系统
 
             上传你的编程题错解代码，AI 自动完成 **结构分析 → 错误诊断 → 修复建议 → 变式训练**
-            """
+            """,
+            elem_classes=["app-header"],
         )
 
         # ==================== 配置区 ====================
-        with gr.Accordion("⚙️ 配置", open=False):
+        with gr.Accordion("⚙️ 配置", open=False, elem_classes=["config-panel"]):
             api_key_input = gr.Textbox(
                 label="DeepSeek API Key（留空则使用内置默认DeepSeek API）",
                 type="password",
@@ -737,8 +989,8 @@ def build_ui():
             with gr.Tab("输入与诊断", id="input"):
                 with gr.Row():
                     # ---- 左侧：输入区 ----
-                    with gr.Column(scale=1):
-                        gr.Markdown("### 📝 输入")
+                    with gr.Column(scale=1, elem_classes=["work-panel"]):
+                        gr.Markdown("### 📝 输入", elem_classes=["panel-heading"])
 
                         language_selector = gr.Dropdown(
                             choices=get_language_choices(),
@@ -815,8 +1067,8 @@ def build_ui():
                             )
 
                     # ---- 右侧：输出区 ----
-                    with gr.Column(scale=1):
-                        gr.Markdown("### 📊 诊断结果")
+                    with gr.Column(scale=1, elem_classes=["result-panel"]):
+                        gr.Markdown("### 📊 诊断结果", elem_classes=["panel-heading"])
 
                         status_output = gr.Markdown(
                             label="状态",
@@ -843,38 +1095,40 @@ def build_ui():
                             )
 
             with gr.Tab("题库", id="library"):
-                gr.Markdown("### 📚 LeetCode 在线题库")
-                with gr.Row():
-                    leetcode_keyword = gr.Textbox(
-                        label="关键词",
-                        placeholder="例：two sum / 两数之和 / binary search",
-                        scale=2,
+                with gr.Column(elem_classes=["library-panel"]):
+                    gr.Markdown("### 📚 LeetCode 在线题库", elem_classes=["panel-heading"])
+                    with gr.Row():
+                        leetcode_keyword = gr.Textbox(
+                            label="关键词",
+                            placeholder="例：two sum / 两数之和 / binary search",
+                            scale=2,
+                        )
+                        leetcode_difficulty = gr.Dropdown(
+                            choices=["全部", "简单", "中等", "困难"],
+                            value="全部",
+                            label="难度",
+                            scale=1,
+                        )
+                    with gr.Row():
+                        leetcode_search_btn = gr.Button("🔍 检索 LeetCode", variant="secondary")
+                    leetcode_search_status = gr.Markdown(value="")
+                    leetcode_results = gr.Dataframe(
+                        headers=["编号", "标题", "难度", "标签", "Slug", "会员题"],
+                        value=[],
+                        label="检索结果",
+                        interactive=False,
+                        type="array",
                     )
-                    leetcode_difficulty = gr.Dropdown(
-                        choices=["全部", "简单", "中等", "困难"],
-                        value="全部",
-                        label="难度",
-                        scale=1,
+                    leetcode_slug_input = gr.Textbox(
+                        label="题目链接或 Slug",
+                        placeholder="例：two-sum 或 https://leetcode.cn/problems/two-sum/",
                     )
-                with gr.Row():
-                    leetcode_search_btn = gr.Button("🔍 检索 LeetCode", variant="secondary")
-                leetcode_search_status = gr.Markdown(value="")
-                leetcode_results = gr.Dataframe(
-                    headers=["编号", "标题", "难度", "标签", "Slug", "会员题"],
-                    value=[],
-                    label="检索结果",
-                    interactive=False,
-                    type="array",
-                )
-                leetcode_slug_input = gr.Textbox(
-                    label="题目链接或 Slug",
-                    placeholder="例：two-sum 或 https://leetcode.cn/problems/two-sum/",
-                )
-                leetcode_import_btn = gr.Button("导入题目到输入区", variant="primary")
+                    leetcode_import_btn = gr.Button("导入题目到输入区", variant="primary")
 
             with gr.Tab("使用指南", id="guide"):
-                gr.Markdown(
-                    """
+                with gr.Column(elem_classes=["guide-panel"]):
+                    gr.Markdown(
+                        """
                     ### ℹ️ 使用指南
 
                     1. 在“题库”中检索 LeetCode 题目，复制结果里的 Slug，或直接粘贴题目链接并导入到输入区。
@@ -883,8 +1137,8 @@ def build_ui():
                     4. 诊断后可以在右侧选择生成的变式题，并点击“导入变式题”继续练习。
 
                     当前 Python3 支持 AST 结构分析和沙箱运行验证；其他语言会跳过 Python 专属步骤，并由大模型按所选语言给出诊断和修复代码。
-                    """
-                )
+                        """
+                    )
 
         # ==================== 事件绑定 ====================
         # 诊断按钮
@@ -974,7 +1228,8 @@ def build_ui():
             **技术栈：** DeepSeek-Coder · Python AST · 沙箱隔离执行 · Gradio
 
             **项目4：AI编程题讲解机器人 — 错解代码诊断与变式训练系统**
-            """
+            """,
+            elem_classes=["footer-note"],
         )
     launch_port = _find_available_port(GRADIO_SERVER_PORT, GRADIO_SERVER_NAME)
     if launch_port != GRADIO_SERVER_PORT:
