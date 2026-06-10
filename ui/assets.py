@@ -26,12 +26,169 @@ CUSTOM_HEAD = """<script>
         }
         document.documentElement.style.colorScheme = "light";
     };
+    const copyText = async (text) => {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+    };
+    const escapeHtml = (value) => value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    const decodeHtmlEntities = (value) => {
+        const textarea = document.createElement("textarea");
+        textarea.innerHTML = value;
+        return textarea.value;
+    };
+    const normalizeReportCode = (source) => decodeHtmlEntities(source)
+        .replace(/\\r\\n/g, "\\n")
+        .replace(/[ \\t]+\\n/g, "\\n")
+        .replace(/\\n{3,}/g, "\\n\\n")
+        .replace(/[ \\t]+$/g, "")
+        .replace(/\\n+$/g, "");
+    const codeKeywords = new Set([
+        "and", "as", "assert", "async", "await", "break", "case", "catch", "class",
+        "const", "continue", "def", "default", "del", "do", "elif", "else", "enum",
+        "except", "export", "extends", "false", "False", "finally", "for", "from",
+        "function", "if", "import", "in", "interface", "is", "lambda", "let", "new",
+        "None", "nonlocal", "not", "null", "or", "pass", "private", "protected",
+        "public", "raise", "return", "static", "struct", "switch", "this", "throw",
+        "true", "True", "try", "typedef", "var", "void", "while", "with", "yield"
+    ]);
+    const codeBuiltins = new Set([
+        "append", "bool", "dict", "enumerate", "float", "int", "len", "list", "map",
+        "max", "min", "pop", "print", "range", "set", "sort", "str", "sum", "vector"
+    ]);
+    const highlightCode = (source) => {
+        const highlightLine = (line) => {
+            let html = "";
+            let index = 0;
+            while (index < line.length) {
+                const rest = line.slice(index);
+                const char = line[index];
+
+                if (char === "#") {
+                    html += `<span class="tok-comment">${escapeHtml(rest)}</span>`;
+                    break;
+                }
+
+                if (char === '"' || char === "'") {
+                    const quote = char;
+                    let end = index + 1;
+                    while (end < line.length) {
+                        if (line[end] === "\\\\") {
+                            end += 2;
+                            continue;
+                        }
+                        if (line[end] === quote) {
+                            end += 1;
+                            break;
+                        }
+                        end += 1;
+                    }
+                    html += `<span class="tok-string">${escapeHtml(line.slice(index, end))}</span>`;
+                    index = end;
+                    continue;
+                }
+
+                const numberMatch = rest.match(/^\\b\\d+(?:\\.\\d+)?\\b/);
+                if (numberMatch) {
+                    html += `<span class="tok-number">${numberMatch[0]}</span>`;
+                    index += numberMatch[0].length;
+                    continue;
+                }
+
+                const wordMatch = rest.match(/^[A-Za-z_]\\w*/);
+                if (wordMatch) {
+                    const word = wordMatch[0];
+                    if (codeKeywords.has(word)) {
+                        html += `<span class="tok-keyword">${word}</span>`;
+                    } else if (codeBuiltins.has(word)) {
+                        html += `<span class="tok-builtin">${word}</span>`;
+                    } else if (/^[A-Z][A-Za-z0-9_]*$/.test(word)) {
+                        html += `<span class="tok-type">${word}</span>`;
+                    } else {
+                        html += escapeHtml(word);
+                    }
+                    index += word.length;
+                    continue;
+                }
+
+                html += escapeHtml(char);
+                index += 1;
+            }
+            return html;
+        };
+        return source.split("\\n").map(highlightLine).join("\\n");
+    };
+    const enhanceReportCodeBlocks = () => {
+        for (const pre of document.querySelectorAll(".report-view pre")) {
+            if (pre.dataset.reportCodeEnhanced === "true") {
+                continue;
+            }
+            pre.dataset.reportCodeEnhanced = "true";
+            pre.classList.add("report-code-block");
+            const codeNode = pre.querySelector("code") || pre;
+            const rawCode = normalizeReportCode(codeNode.textContent);
+            if (codeNode instanceof HTMLElement && codeNode.dataset.reportHighlighted !== "true") {
+                codeNode.dataset.rawCode = rawCode;
+                codeNode.dataset.reportHighlighted = "true";
+                codeNode.innerHTML = highlightCode(rawCode);
+            }
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "report-code-copy";
+            button.textContent = "复制";
+            button.title = "复制完整代码";
+            button.setAttribute("aria-label", "复制完整代码");
+            button.addEventListener("click", async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const code = pre.querySelector("code") || pre;
+                const text = code.dataset.rawCode || normalizeReportCode(code.textContent);
+                try {
+                    await copyText(text);
+                    button.textContent = "已复制";
+                    button.classList.add("is-copied");
+                } catch (error) {
+                    button.textContent = "复制失败";
+                    button.classList.add("is-error");
+                }
+                window.setTimeout(() => {
+                    button.textContent = "复制";
+                    button.classList.remove("is-copied", "is-error");
+                }, 1400);
+            });
+            pre.appendChild(button);
+        }
+    };
+    const applyEnhancements = () => {
+        applyLightTheme();
+        enhanceReportCodeBlocks();
+    };
     applyLightTheme();
-    document.addEventListener("DOMContentLoaded", applyLightTheme);
-    setTimeout(applyLightTheme, 50);
-    setTimeout(applyLightTheme, 250);
-    setTimeout(applyLightTheme, 1000);
-    new MutationObserver(applyLightTheme).observe(document.documentElement, { childList: true, subtree: true });
+    enhanceReportCodeBlocks();
+    document.addEventListener("DOMContentLoaded", applyEnhancements);
+    setTimeout(applyEnhancements, 50);
+    setTimeout(applyEnhancements, 250);
+    setTimeout(applyEnhancements, 1000);
+    new MutationObserver(applyEnhancements).observe(document.documentElement, { childList: true, subtree: true });
 })();
 </script>
 """
@@ -398,10 +555,110 @@ CUSTOM_CSS = """    :root {
     .report-view a[id] {
         scroll-margin-top: 16px;
     }
-    .report-view pre {
+    .report-view pre,
+    .report-view .report-code-block {
+        position: relative;
+        margin: 14px 0 18px !important;
+        padding: 18px 58px 18px 20px !important;
         border-radius: 8px !important;
-        border: 1px solid var(--app-border);
-        background: #f8fafc !important;
+        border: 1px solid #c9d8ea !important;
+        background:
+            linear-gradient(180deg, #ffffff 0%, #f7fbff 100%) !important;
+        box-shadow:
+            inset 4px 0 0 rgba(37, 99, 235, 0.24),
+            0 12px 28px rgba(15, 23, 42, 0.08);
+        min-height: 0 !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        overflow-x: hidden !important;
+        white-space: pre-wrap !important;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        color: #172033 !important;
+    }
+    .report-view pre code,
+    .report-view .report-code-block code {
+        display: block;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        color: #172033 !important;
+        font-family: var(--app-font-mono) !important;
+        font-size: 0.94rem;
+        font-weight: 650;
+        line-height: 1.72;
+        min-height: 0 !important;
+        height: auto !important;
+        white-space: pre-wrap !important;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        tab-size: 4;
+    }
+    .report-view .tok-keyword {
+        color: #7c3aed;
+        font-weight: 800;
+    }
+    .report-view .tok-string {
+        color: #047857;
+    }
+    .report-view .tok-number {
+        color: #b45309;
+        font-weight: 750;
+    }
+    .report-view .tok-comment {
+        color: #64748b;
+        font-style: italic;
+        font-weight: 600;
+    }
+    .report-view .tok-builtin {
+        color: #0369a1;
+        font-weight: 760;
+    }
+    .report-view .tok-type {
+        color: #be123c;
+        font-weight: 800;
+    }
+    .report-view pre button:not(.report-code-copy),
+    .report-view .report-code-block button:not(.report-code-copy),
+    .report-view pre [aria-label*="copy" i]:not(.report-code-copy),
+    .report-view pre [title*="copy" i]:not(.report-code-copy) {
+        display: none !important;
+    }
+    .report-view .report-code-copy {
+        position: absolute;
+        float: right;
+        top: 10px;
+        right: 10px;
+        z-index: 2;
+        min-width: 46px;
+        height: 30px;
+        margin: 0;
+        padding: 0 10px;
+        border: 1px solid #bfdbfe !important;
+        border-radius: 8px !important;
+        background: #eff6ff !important;
+        color: #1d4ed8 !important;
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14);
+        font-family: var(--app-font-sans) !important;
+        font-size: 0.8rem !important;
+        font-weight: 800 !important;
+        line-height: 1 !important;
+        cursor: pointer;
+    }
+    .report-view .report-code-copy:hover {
+        background: #dbeafe !important;
+        transform: translateY(-1px);
+    }
+    .report-view .report-code-copy.is-copied {
+        border-color: #99f6e4 !important;
+        background: #ccfbf1 !important;
+        color: #0f766e !important;
+    }
+    .report-view .report-code-copy.is-error {
+        border-color: #fecdd3 !important;
+        background: #fff1f2 !important;
+        color: #be123c !important;
     }
     .report-view code {
         border-radius: 6px;

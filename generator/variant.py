@@ -139,9 +139,9 @@ class VariantGenerator:
             if line.startswith("**题目名称") or line.startswith("题目名称"):
                 # 提取 **题目名称：** xxx
                 if "：" in line:
-                    return line.split("：", 1)[1].strip().rstrip("*")
+                    return line.split("：", 1)[1].strip().strip("*").strip()
                 elif ":" in line:
-                    return line.split(":", 1)[1].strip().rstrip("*")
+                    return line.split(":", 1)[1].strip().strip("*").strip()
         return "变式练习"
 
     @staticmethod

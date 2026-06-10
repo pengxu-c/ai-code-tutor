@@ -92,6 +92,15 @@ def load_leetcode_template(
     leetcode_csrf_token: str = "",
 ) -> tuple[object, str, str, str, str]:
     """从 LeetCode 在线导入题目模板。"""
+    if not normalize_leetcode_slug(slug_or_url):
+        return (
+            gr.update(language=get_gradio_language(language)),
+            "",
+            "",
+            "",
+            "LeetCode 导入失败：请输入有效的题目 slug 或题目链接，例如 two-sum。",
+        )
+
     try:
         problem = get_leetcode_problem(
             slug_or_url,

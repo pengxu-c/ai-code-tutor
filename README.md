@@ -59,6 +59,11 @@ bash run.sh
 
 项目不会批量复制或内置 LeetCode 全量题面。页面中的“LeetCode 在线题库”支持按需检索，并在用户输入题目 slug 或链接后临时导入单题内容用于讲解。
 
+会员题导入可以在页面“配置”区域填写 LeetCode 登录态：`LeetCode Session` 支持填写
+`LEETCODE_SESSION` 的原始值、`LEETCODE_SESSION=...`，或包含该字段的完整 Cookie
+字符串；`LeetCode CSRF Token` 支持填写 `csrftoken` 的原始值或 `csrftoken=...`。这些凭证
+只会用于当前检索/导入请求，不会写入项目文件，也不会被保存到本地题库。
+
 ## 编程语言
 
 页面左侧可以选择编程语言。预设题会根据语言生成对应模板，LeetCode 导入会优先使用该语言的官方代码片段。当前 AST 结构分析和沙箱运行验证仅支持 Python3；选择其他语言时，系统会跳过这两步，并由大模型按所选语言给出诊断和修复代码。

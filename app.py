@@ -28,6 +28,7 @@ from config import (
 )
 from utils.logger import setup_logger
 from services.diagnosis_service import get_code_explanation, run_diagnosis
+from services.history_service import list_report_history, load_report_history
 from services.leetcode_service import (
     apply_language_change,
     fill_slug_from_result,
@@ -199,6 +200,24 @@ def build_ui():
                             elem_classes=["report-view"],
                         )
 
+                        report_download = gr.File(
+                            label="下载报告",
+                            value=None,
+                            interactive=False,
+                        )
+
+                        with gr.Row():
+                            history_selector = gr.Dropdown(
+                                choices=list_report_history(),
+                                label="最近诊断历史",
+                                scale=3,
+                            )
+                            open_history_btn = gr.Button(
+                                "打开历史",
+                                variant="secondary",
+                                scale=1,
+                            )
+
                         with gr.Row():
                             variant_selector = gr.Dropdown(
                                 choices=[],
@@ -271,7 +290,14 @@ def build_ui():
                 gen_variants,
                 api_key_input,
             ],
-            outputs=[report_output, status_output, variant_selector, generated_variants_state],
+            outputs=[
+                report_output,
+                status_output,
+                variant_selector,
+                generated_variants_state,
+                report_download,
+                history_selector,
+            ],
         )
 
         # 代码解释按钮
@@ -279,6 +305,12 @@ def build_ui():
             fn=get_code_explanation,
             inputs=[code_input, language_selector, api_key_input],
             outputs=[report_output],
+        )
+
+        open_history_btn.click(
+            fn=load_report_history,
+            inputs=[history_selector],
+            outputs=[report_output, report_download],
         )
 
         # 切换语言 → 更新编辑器高亮

@@ -1,5 +1,6 @@
 """Diagnosis and explanation workflows for the Gradio UI."""
 
+from dataclasses import dataclass
 import time
 
 import gradio as gr
@@ -9,6 +10,7 @@ from analyzer.llm_diagnosis import LLMDiagnosis
 from analyzer.sandbox import SandboxRunner
 from config import REPORT_INCLUDE_AST, REPORT_INCLUDE_SANDBOX, REPORT_INCLUDE_VARIANT
 from generator.variant import VariantGenerator
+from services.history_service import save_report_history
 from services.variant_service import _format_variant_choice, _normalize_variants
 from utils.languages import is_python_language
 from utils.logger import setup_logger
@@ -19,6 +21,24 @@ ast_analyzer = ASTAnalyzer()
 llm_diagnosis = LLMDiagnosis()
 sandbox_runner = SandboxRunner()
 variant_generator = VariantGenerator()
+
+
+@dataclass
+class _DiagnosisDependencies:
+    ast_analyzer: ASTAnalyzer
+    llm_diagnosis: LLMDiagnosis
+    sandbox_runner: SandboxRunner
+    variant_generator: VariantGenerator
+
+
+def _get_dependencies() -> _DiagnosisDependencies:
+    """Return the current service dependencies, keeping Gradio entrypoints simple."""
+    return _DiagnosisDependencies(
+        ast_analyzer=ast_analyzer,
+        llm_diagnosis=llm_diagnosis,
+        sandbox_runner=sandbox_runner,
+        variant_generator=variant_generator,
+    )
 
 
 def run_diagnosis(
@@ -37,16 +57,42 @@ def run_diagnosis(
     Returns:
         (markdown_report, status_message)
     """
+    return _run_diagnosis_with_dependencies(
+        _get_dependencies(),
+        code=code,
+        language=language,
+        problem_desc=problem_desc,
+        error_info=error_info,
+        test_input=test_input,
+        test_expected=test_expected,
+        generate_variants=generate_variants,
+        api_key=api_key,
+    )
+
+
+def _run_diagnosis_with_dependencies(
+    deps: _DiagnosisDependencies,
+    code: str,
+    language: str,
+    problem_desc: str,
+    error_info: str,
+    test_input: str,
+    test_expected: str,
+    generate_variants: bool,
+    api_key: str,
+) -> tuple[str, str, object, list[dict], str | None, object]:
+    """Run diagnosis with injectable dependencies for service-level tests."""
     start_time = time.time()
 
     # 参数校验
     if not code.strip():
-        return "", "请输入需要诊断的代码。", gr.update(choices=[], value=None), []
+        return "", "请输入需要诊断的代码。", gr.update(choices=[], value=None), [], None, gr.update()
 
     # 如果用户配置了 API Key，动态更新
     if api_key and api_key.strip():
-        llm_diagnosis.api_key = api_key.strip()
-        variant_generator.llm.api_key = api_key.strip()
+        deps.llm_diagnosis.api_key = api_key.strip()
+        if hasattr(deps.variant_generator, "llm"):
+            deps.variant_generator.llm.api_key = api_key.strip()
 
     # 构建报告
     title = _infer_problem_title(problem_desc)
@@ -62,7 +108,7 @@ def run_diagnosis(
     if REPORT_INCLUDE_AST:
         if is_python_language(language):
             try:
-                ast_report = ast_analyzer.analyze(code)
+                ast_report = deps.ast_analyzer.analyze(code)
                 builder.add_ast_analysis(ast_report)
                 status_parts.append("AST 结构分析完成")
             except Exception as e:
@@ -84,7 +130,7 @@ def run_diagnosis(
         if test_input.strip() and test_expected.strip():
             test_cases.append({"input": test_input, "expected": test_expected})
 
-        diag_result = llm_diagnosis.diagnose(
+        diag_result = deps.llm_diagnosis.diagnose(
             code=code,
             problem_desc=problem_desc,
             error_info=error_info,
@@ -110,7 +156,7 @@ def run_diagnosis(
     if REPORT_INCLUDE_SANDBOX and test_input.strip():
         if is_python_language(language):
             try:
-                results = sandbox_runner.run_tests(
+                results = deps.sandbox_runner.run_tests(
                     code=code,
                     test_cases=[{"input": test_input, "expected": test_expected}],
                 )
@@ -159,7 +205,7 @@ def run_diagnosis(
             if "双指针" in problem_desc or "two pointer" in problem_desc.lower():
                 tags.append("双指针")
 
-            variants = variant_generator.generate(
+            variants = deps.variant_generator.generate(
                 problem_desc=problem_desc or code,
                 code=code,
                 tags=tags if tags else None,
@@ -182,11 +228,19 @@ def run_diagnosis(
     ]
 
     logger.info(status)
+    report_file, history_update = save_report_history(
+        report=report,
+        title=title,
+        language=language,
+        status=status,
+    )
     return (
         report,
         status,
         gr.update(choices=variant_choices, value=variant_choices[0] if variant_choices else None),
         generated_variants,
+        report_file,
+        history_update,
     )
 
 
@@ -203,11 +257,26 @@ def _infer_problem_title(problem_desc: str) -> str:
 
 def get_code_explanation(code: str, language: str, api_key: str) -> str:
     """生成代码解释"""
+    return _get_code_explanation_with_dependencies(
+        _get_dependencies(),
+        code=code,
+        language=language,
+        api_key=api_key,
+    )
+
+
+def _get_code_explanation_with_dependencies(
+    deps: _DiagnosisDependencies,
+    code: str,
+    language: str,
+    api_key: str,
+) -> str:
+    """Generate a code explanation with injectable dependencies for tests."""
     if not code.strip():
         return "请先输入代码。"
     if api_key and api_key.strip():
-        llm_diagnosis.api_key = api_key.strip()
+        deps.llm_diagnosis.api_key = api_key.strip()
     try:
-        return llm_diagnosis.explain_code(code, language=language)
+        return deps.llm_diagnosis.explain_code(code, language=language)
     except Exception as e:
         return f"解释失败：{str(e)}"

@@ -225,7 +225,7 @@ class LeetCodeClient:
     ) -> dict[str, Any]:
         slug = self.normalize_slug(slug_or_url)
         if not slug:
-            raise ValueError("请输入 LeetCode 题目链接或 titleSlug，例如 two-sum。")
+            raise ValueError("请输入有效的 LeetCode 题目链接或 titleSlug，例如 two-sum。")
 
         last_error = None
         for endpoint in self.endpoints:
@@ -244,7 +244,7 @@ class LeetCodeClient:
             except Exception as exc:
                 last_error = exc
 
-        raise RuntimeError(f"无法获取 LeetCode 题目：{last_error or slug}")
+        raise RuntimeError(f"无法获取 LeetCode 题目：{self._short_error(last_error or slug)}")
 
     def search(
         self,
@@ -293,7 +293,7 @@ class LeetCodeClient:
             except Exception as exc:
                 last_error = exc
 
-        raise RuntimeError(f"无法检索 LeetCode 题库：{last_error}")
+        raise RuntimeError(f"无法检索 LeetCode 题库：{self._short_error(last_error)}")
 
     def _graphql(
         self,
@@ -313,12 +313,21 @@ class LeetCodeClient:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as exc:
-            raise RuntimeError(response.text[:500]) from exc
+            raise RuntimeError(self._short_error(response.text)) from exc
         body = response.json()
         if body.get("errors"):
             messages = "; ".join(e.get("message", "unknown error") for e in body["errors"])
-            raise RuntimeError(messages)
+            raise RuntimeError(self._short_error(messages))
         return body.get("data") or {}
+
+    @staticmethod
+    def _short_error(error: object, limit: int = 240) -> str:
+        """Return a compact, UI-safe error message without multiline noise."""
+        text = str(error or "").strip()
+        text = re.sub(r"\s+", " ", text)
+        if len(text) > limit:
+            return f"{text[:limit].rstrip()}..."
+        return text
 
     def _build_auth_headers(self, endpoint: str, leetcode_session: str = "", csrf_token: str = "") -> dict[str, str]:
         """Build request headers with optional LeetCode login cookies."""
