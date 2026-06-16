@@ -134,3 +134,50 @@ def test_fetch_problem_falls_back_from_cn_to_global_endpoint():
     assert problem["source"] == "leetcode.com"
     assert problem["starter_code"] == "class Solution:\n    pass"
     assert problem["leetcode_url"] == "https://leetcode.com/problems/two-sum/"
+
+
+def test_format_problem_extracts_input_and_output_from_statement_examples():
+    client = LeetCodeClient()
+    question = make_question(
+        title="Median of Two Sorted Arrays",
+        translatedTitle="寻找两个正序数组的中位数",
+        titleSlug="median-of-two-sorted-arrays",
+        translatedContent="""
+        <p>给定两个大小分别为 m 和 n 的正序数组。</p>
+        <p><strong>示例 1：</strong></p>
+        <pre>
+        输入：nums1 = [1,3], nums2 = [2]
+        输出：2.00000
+        解释：合并数组 = [1,2,3] ，中位数 2
+        </pre>
+        """,
+        exampleTestcases="[1,3]\n[2]",
+        codeSnippets=[
+            {
+                "langSlug": "python3",
+                "code": "class Solution:\n    def findMedianSortedArrays(self, nums1: list[int], nums2: list[int]) -> float:\n        pass",
+            }
+        ],
+    )
+
+    problem = client._format_problem(question, "https://leetcode.cn/graphql/", "python3")
+
+    assert problem["examples"] == [{"input": "nums1 = [1,3]\nnums2 = [2]", "output": "2.00000"}]
+
+
+def test_format_problem_names_raw_testcase_values_from_python_signature():
+    client = LeetCodeClient()
+    question = make_question(
+        translatedContent="<p>会员题题面可能没有完整示例输出。</p>",
+        exampleTestcases="[1,3]\n[2]",
+        codeSnippets=[
+            {
+                "langSlug": "python3",
+                "code": "class Solution:\n    def findMedianSortedArrays(self, nums1, nums2):\n        pass",
+            }
+        ],
+    )
+
+    problem = client._format_problem(question, "https://leetcode.cn/graphql/", "python3")
+
+    assert problem["examples"] == [{"input": "nums1 = [1,3]\nnums2 = [2]", "output": ""}]

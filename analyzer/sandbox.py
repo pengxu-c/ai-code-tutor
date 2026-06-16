@@ -12,6 +12,7 @@ import os
 import time
 import json
 import tempfile
+import ast
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -24,10 +25,10 @@ from config import SANDBOX_TIMEOUT, SANDBOX_MAX_OUTPUT
 # ==================== 安全执行器模板代码 ====================
 # 这段代码会作为子进程的启动脚本运行
 _SANDBOX_BOOTSTRAP = '''
-import sys, io, builtins, traceback, json
+import sys, io, builtins, traceback, json, ast, typing
 
 # --- 安全限制 ---
-FORBIDDEN_BUILTINS = {"exec", "eval", "compile", "__import__", "open",
+FORBIDDEN_BUILTINS = {"exec", "eval", "compile", "open",
                       "globals", "locals", "vars", "exit", "quit"}
 FORBIDDEN_MODULES = {"os", "sys", "subprocess", "shutil", "pathlib",
                      "socket", "http", "urllib", "requests",
@@ -66,6 +67,73 @@ def _safe_import(name, *args, **kwargs):
 builtins.__import__ = _safe_import
 
 # --- 执行用户代码 ---
+def _parse_call_input(input_data):
+    text = (input_data or "").strip()
+    if not text:
+        return [], {}
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return parsed, {}
+        if isinstance(parsed, dict):
+            return [], parsed
+        return [parsed], {}
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        parsed = ast.literal_eval(text)
+        if isinstance(parsed, tuple):
+            return list(parsed), {}
+        if isinstance(parsed, list):
+            return parsed, {}
+        if isinstance(parsed, dict):
+            return [], parsed
+        return [parsed], {}
+    except (ValueError, SyntaxError):
+        pass
+
+    values = {}
+    ordered_names = []
+    try:
+        module = ast.parse(text, mode="exec")
+        for node in module.body:
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+            ):
+                name = node.targets[0].id
+                values[name] = ast.literal_eval(node.value)
+                ordered_names.append(name)
+        if values:
+            return [], {name: values[name] for name in ordered_names}
+    except Exception:
+        pass
+
+    return [input_data], {}
+
+
+def _resolve_callable(ns, func_name):
+    if func_name in ns and callable(ns[func_name]):
+        return ns[func_name]
+
+    if "." in func_name:
+        owner, method = func_name.split(".", 1)
+        target = ns.get(owner)
+        if isinstance(target, type):
+            target = target()
+        if target is not None and hasattr(target, method):
+            return getattr(target, method)
+
+    solution = ns.get("Solution")
+    if isinstance(solution, type) and hasattr(solution, func_name):
+        return getattr(solution(), func_name)
+
+    return None
+
+
 def run_user_code():
     output_buf = io.StringIO()
     error_buf = io.StringIO()
@@ -86,18 +154,13 @@ def run_user_code():
         if func_name:
             ns = {"__builtins__": builtins}
             _safe_exec(compiled, ns)
-            if func_name in ns:
-                if input_data.strip():
-                    try:
-                        args = json.loads(input_data)
-                        if isinstance(args, list):
-                            result = ns[func_name](*args)
-                        else:
-                            result = ns[func_name](args)
-                    except json.JSONDecodeError:
-                        result = ns[func_name](input_data)
+            target = _resolve_callable(ns, func_name)
+            if target:
+                args, kwargs = _parse_call_input(input_data)
+                if kwargs:
+                    result = target(**kwargs)
                 else:
-                    result = ns[func_name]()
+                    result = target(*args)
                 if result is not None:
                     print(result)
             else:
@@ -208,12 +271,13 @@ class SandboxRunner:
             SandboxResult 列表
         """
         results = []
+        inferred_function = function_name or self._infer_callable_name(code)
         for tc in test_cases:
             result = self._run_single_test(
                 code=code,
                 input_data=str(tc.get("input", "")),
                 expected_output=str(tc.get("expected", "")),
-                function_name=function_name,
+                function_name=inferred_function,
             )
             results.append(result)
         return results
@@ -316,6 +380,25 @@ class SandboxRunner:
     # ------------------------------------------------------------------
     #  辅助方法
     # ------------------------------------------------------------------
+    def _infer_callable_name(self, code: str) -> Optional[str]:
+        """Infer a callable for LeetCode-style Python submissions."""
+        try:
+            module = ast.parse(code)
+        except SyntaxError:
+            return None
+
+        for node in module.body:
+            if isinstance(node, ast.ClassDef) and node.name == "Solution":
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef) and not item.name.startswith("_"):
+                        return item.name
+
+        for node in module.body:
+            if isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+                return node.name
+
+        return None
+
     def _truncate(self, text: str) -> str:
         """截断过长输出"""
         if len(text) > self.max_output:
@@ -327,6 +410,15 @@ class SandboxRunner:
         比较实际输出与期望输出
         支持多行输出、忽略空白差异等
         """
+        actual_value = self._parse_output_value(actual)
+        expected_value = self._parse_output_value(expected)
+        if actual_value is not None and expected_value is not None:
+            return actual_value == expected_value
+        if isinstance(actual_value, str) and actual_value == self._strip_wrapping_quotes(expected):
+            return True
+        if isinstance(expected_value, str) and expected_value == self._strip_wrapping_quotes(actual):
+            return True
+
         actual_lines = [line.strip() for line in actual.strip().splitlines() if line.strip()]
         expected_lines = [line.strip() for line in expected.strip().splitlines() if line.strip()]
 
@@ -334,6 +426,34 @@ class SandboxRunner:
             return False
 
         return all(a == e for a, e in zip(actual_lines, expected_lines))
+
+    def _strip_wrapping_quotes(self, value: str) -> str:
+        text = (value or "").strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+            return text[1:-1]
+        return text
+
+    def _parse_output_value(self, value: str):
+        """Parse JSON/Python-literal outputs so `[0, 1]` equals `[0,1]`."""
+        text = (value or "").strip()
+        if not text:
+            return None
+
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                return parser(text)
+            except (ValueError, SyntaxError, json.JSONDecodeError):
+                continue
+
+        lowered = text.lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+        if lowered == "null":
+            return None
+
+        return None
 
     def cleanup(self):
         """清理临时文件"""

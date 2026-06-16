@@ -37,10 +37,40 @@ def test_sandbox_runs_function_calls_with_json_arguments():
     assert result.passed is True
 
 
+def test_sandbox_runs_leetcode_solution_method_with_named_inputs():
+    runner = SandboxRunner(timeout=2, max_output=1024)
+    code = """
+from typing import List
+
+class Solution:
+    def twoSum(self, nums: List[int], target: int) -> List[int]:
+        seen = {}
+        for i, num in enumerate(nums):
+            if target - num in seen:
+                return [seen[target - num], i]
+            seen[num] = i
+        return []
+"""
+    try:
+        result = runner.run_tests(
+            code,
+            [{"input": "nums = [2,7,11,15]\ntarget = 9", "expected": "[0,1]"}],
+        )[0]
+    finally:
+        runner.cleanup()
+
+    assert result.actual_output == "[0, 1]\n"
+    assert result.error == ""
+    assert result.passed is True
+
+
 def test_sandbox_output_compare_ignores_line_whitespace_and_detects_failure():
     runner = SandboxRunner(timeout=2, max_output=1024)
     try:
         assert runner._compare_output("  a  \n\n b ", "a\nb") is True
+        assert runner._compare_output("[0, 1]", "[0,1]") is True
+        assert runner._compare_output("True", "true") is True
+        assert runner._compare_output("fl", '"fl"') is True
         result = runner.run_tests(
             "print('actual')",
             [{"input": "", "expected": "expected"}],

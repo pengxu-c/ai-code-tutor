@@ -115,6 +115,7 @@ class LLMDiagnosis:
         problem_desc: str = "",
         error_info: str = "",
         test_cases: Optional[list[dict]] = None,
+        validation_results: Optional[list[dict]] = None,
         language: str = "Python3",
     ) -> dict:
         """
@@ -136,6 +137,19 @@ class LLMDiagnosis:
             for i, tc in enumerate(test_cases, 1):
                 test_info += f"- 用例{i}：输入={tc.get('input','')}, 期望输出={tc.get('expected','')}\n"
 
+        validation_info = ""
+        if validation_results:
+            validation_info = "\n\n### 沙箱验证结果\n"
+            for i, result in enumerate(validation_results, 1):
+                status = "通过" if result.get("passed") else "未通过"
+                validation_info += (
+                    f"- 用例{i}：{status}；输入={result.get('input', '')}；"
+                    f"期望={result.get('expected', '')}；实际={result.get('actual', '')}"
+                )
+                if result.get("error"):
+                    validation_info += f"；错误={result.get('error')}"
+                validation_info += "\n"
+
         system_prompt = """你是一位经验丰富的编程教师和代码审查专家。你的任务是：
 1. 仔细阅读学生使用指定编程语言编写的代码，找出其中的逻辑错误、语法错误或效率问题
 2. 用通俗易懂的语言解释错误原因，帮助学生理解"为什么错"
@@ -143,6 +157,14 @@ class LLMDiagnosis:
 4. 如果代码是正确的，也要指出可以优化的地方
 
 请用中文回答，使用 Markdown 格式。"""
+
+        system_prompt += """
+
+重要约束：
+1. 先判断代码是否真的错误，不要默认学生代码一定是错的。
+2. 如果沙箱验证全部通过、且没有明确报错信息，请写明“当前未发现导致失败的错误”，不要臆造错误。
+3. 若代码已正确，“修复建议”应给可选优化或复杂度说明，不要强行重写成另一套解法。
+4. 只有在失败用例、报错或明确逻辑缺陷存在时，才定位错误并给出修复代码。"""
 
         user_prompt = f"""## 编程语言
 {language}
@@ -158,6 +180,7 @@ class LLMDiagnosis:
 ## 报错信息 / 运行结果
 {error_info or '（未提供）'}
 {test_info}
+{validation_info}
 
 请按以下格式回答：
 

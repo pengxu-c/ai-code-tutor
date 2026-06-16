@@ -89,3 +89,32 @@ def test_load_leetcode_template_failure_preserves_language(monkeypatch):
     assert test_in == ""
     assert test_out == ""
     assert status == "LeetCode 导入失败：network unavailable"
+
+
+def test_load_leetcode_template_uses_first_parsed_example(monkeypatch):
+    def fake_get_problem(*args, **kwargs):
+        return {
+            "title": "4. 寻找两个正序数组的中位数",
+            "difficulty": "困难",
+            "tags": ["数组", "二分查找"],
+            "leetcode_url": "https://leetcode.cn/problems/median-of-two-sorted-arrays/",
+            "description": "给定两个正序数组。",
+            "examples": [
+                {"input": "nums1 = [1,3]\nnums2 = [2]", "output": "2.00000"},
+                {"input": "nums1 = [1,2]\nnums2 = [3,4]", "output": "2.50000"},
+            ],
+            "starter_code": "class Solution:\n    def findMedianSortedArrays(self, nums1, nums2):\n        pass",
+            "paid_only": False,
+        }
+
+    monkeypatch.setattr(leetcode_service, "get_leetcode_problem", fake_get_problem)
+
+    code_update, desc, test_in, test_out, status = load_leetcode_template(
+        "median-of-two-sorted-arrays",
+        "Python3",
+    )
+
+    assert code_update["value"].startswith("class Solution:")
+    assert test_in == "nums1 = [1,3]\nnums2 = [2]"
+    assert test_out == "2.00000"
+    assert "寻找两个正序数组的中位数" in desc

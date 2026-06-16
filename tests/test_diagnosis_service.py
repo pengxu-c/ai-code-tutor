@@ -135,6 +135,15 @@ def test_run_diagnosis_python_success_path_calls_all_dependencies(monkeypatch):
     assert deps.llm_diagnosis.api_key == "sk-test-key"
     assert deps.variant_generator.llm.api_key == "sk-test-key"
     assert deps.llm_diagnosis.diagnose_calls[0]["test_cases"] == [{"input": "[]", "expected": "ok"}]
+    assert deps.llm_diagnosis.diagnose_calls[0]["validation_results"] == [
+        {
+            "input": "[]",
+            "expected": "ok",
+            "actual": "ok",
+            "passed": True,
+            "error": "",
+        }
+    ]
     assert deps.sandbox_runner.calls[0]["test_cases"] == [{"input": "[]", "expected": "ok"}]
     assert deps.variant_generator.calls[0]["tags"] == ["数组", "哈希表"]
     assert "AST_OK" in report

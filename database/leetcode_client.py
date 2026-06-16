@@ -7,6 +7,7 @@ LeetCode problems on demand when the user enters a problem slug or URL.
 from __future__ import annotations
 
 import html
+import ast
 import os
 import re
 from html.parser import HTMLParser
@@ -403,7 +404,11 @@ class LeetCodeClient:
             "difficulty": DIFFICULTY_TO_CN.get(question.get("difficulty"), question.get("difficulty", "未知")),
             "tags": tags,
             "description": description,
-            "examples": _extract_examples(question.get("exampleTestcases") or question.get("sampleTestCase") or ""),
+            "examples": _extract_examples(
+                question.get("exampleTestcases") or question.get("sampleTestCase") or "",
+                description=description,
+                starter_code=starter,
+            ),
             "starter_code": starter,
             "code_snippets": snippets,
             "selected_language": language_slug,
@@ -473,9 +478,131 @@ def html_to_markdown(html_text: str) -> str:
     return parser.get_text()
 
 
-def _extract_examples(example_text: str) -> list[dict[str, str]]:
-    """Keep the current app's example shape without trying to parse every format."""
-    example_text = (example_text or "").strip()
-    if not example_text:
+def _extract_examples(
+    example_text: str,
+    description: str = "",
+    starter_code: str = "",
+) -> list[dict[str, str]]:
+    """Extract UI-ready examples with named inputs and expected outputs."""
+    params = _extract_python_method_params(starter_code)
+    description_examples = _extract_examples_from_description(description)
+    raw_examples = _extract_examples_from_raw_testcases(example_text, params)
+
+    if description_examples:
+        if raw_examples:
+            for index, example in enumerate(description_examples):
+                if not example.get("input") and index < len(raw_examples):
+                    example["input"] = raw_examples[index]["input"]
+                elif params and example.get("input"):
+                    example["input"] = _normalize_example_input(example["input"], params)
+        return [ex for ex in description_examples if ex.get("input") or ex.get("output")]
+
+    return raw_examples
+
+
+def _extract_examples_from_description(description: str) -> list[dict[str, str]]:
+    text = _normalize_label_text(description)
+    if not text:
         return []
-    return [{"input": example_text, "output": ""}]
+
+    examples: list[dict[str, str]] = []
+    input_pattern = re.compile(
+        r"(?:^|\n)\s*(?:输入|Input)\s*[:：]\s*(?P<input>.*?)(?=\n\s*(?:输出|Output)\s*[:：])",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in input_pattern.finditer(text):
+        output_match = re.match(
+            r"\n\s*(?:输出|Output)\s*[:：]\s*(?P<output>.*?)(?=\n\s*(?:解释|Explanation|示例|Example|约束|Constraints|提示|Note)\b|$)",
+            text[match.end():],
+            re.IGNORECASE | re.DOTALL,
+        )
+        examples.append(
+            {
+                "input": _normalize_example_input(match.group("input").strip()),
+                "output": _normalize_example_output(output_match.group("output").strip() if output_match else ""),
+            }
+        )
+    return examples
+
+
+def _extract_examples_from_raw_testcases(example_text: str, params: list[str]) -> list[dict[str, str]]:
+    text = (example_text or "").strip()
+    if not text:
+        return []
+
+    if params:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if lines and all("=" not in line for line in lines) and len(lines) % len(params) == 0:
+            examples = []
+            for start in range(0, len(lines), len(params)):
+                chunk = lines[start:start + len(params)]
+                examples.append(
+                    {
+                        "input": "\n".join(f"{name} = {value}" for name, value in zip(params, chunk)),
+                        "output": "",
+                    }
+                )
+            return examples
+
+    return [{"input": _normalize_example_input(text, params), "output": ""}]
+
+
+def _normalize_label_text(text: str) -> str:
+    text = html.unescape(text or "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    return text.strip()
+
+
+def _normalize_example_input(value: str, params: Optional[list[str]] = None) -> str:
+    text = _normalize_label_text(value)
+    if not text:
+        return ""
+
+    text = re.sub(r"\s*,\s*(?=[A-Za-z_]\w*\s*=)", "\n", text)
+    text = re.sub(r"(?<!^)\s+(?=[A-Za-z_]\w*\s*=)", "\n", text)
+    text = re.sub(r"\n{2,}", "\n", text).strip()
+
+    if params:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if lines and all("=" not in line for line in lines) and len(lines) == len(params):
+            return "\n".join(f"{name} = {value}" for name, value in zip(params, lines))
+
+    return text
+
+
+def _normalize_example_output(value: str) -> str:
+    text = _normalize_label_text(value)
+    if not text:
+        return ""
+
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            break
+        lines.append(stripped)
+    return "\n".join(lines).strip()
+
+
+def _extract_python_method_params(starter_code: str) -> list[str]:
+    try:
+        module = ast.parse(starter_code or "")
+    except SyntaxError:
+        return []
+
+    for node in module.body:
+        if isinstance(node, ast.ClassDef) and node.name == "Solution":
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and not item.name.startswith("_"):
+                    return [
+                        arg.arg
+                        for arg in item.args.args
+                        if arg.arg not in {"self", "cls"}
+                    ]
+
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+            return [arg.arg for arg in node.args.args]
+
+    return []

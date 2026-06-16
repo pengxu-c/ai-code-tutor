@@ -121,20 +121,54 @@ def _run_diagnosis_with_dependencies(
             )
             status_parts.append(f"已跳过 AST（{language}）")
 
+    # 构造测试用例
+    test_cases = []
+    if test_input.strip() and test_expected.strip():
+        test_cases.append({"input": test_input, "expected": test_expected})
+
+    sandbox_results = []
+
     # ------------------------------------------------------------------
-    # 第 2 步：LLM 智能诊断
+    # 第 2 步：沙箱运行验证
+    # ------------------------------------------------------------------
+    if REPORT_INCLUDE_SANDBOX and test_cases:
+        if is_python_language(language):
+            try:
+                results = deps.sandbox_runner.run_tests(
+                    code=code,
+                    test_cases=test_cases,
+                )
+                sandbox_results = [{
+                    "input": r.input_data,
+                    "expected": r.expected_output,
+                    "actual": r.actual_output,
+                    "passed": r.passed,
+                    "error": r.error,
+                } for r in results]
+                builder.add_sandbox_results(sandbox_results)
+                passed = sum(1 for r in sandbox_results if r.get("passed"))
+                status_parts.append(f"沙箱运行验证完成（{passed}/{len(sandbox_results)} 通过）")
+            except Exception as e:
+                logger.error(f"沙箱运行异常: {e}")
+                builder.add_sandbox_results([])
+                status_parts.append(f"沙箱运行失败: {e}")
+        else:
+            builder.add_sandbox_results(
+                [],
+                skipped_reason=f"当前沙箱运行暂仅支持 Python3，已跳过 {language} 代码执行验证。",
+            )
+            status_parts.append(f"已跳过沙箱（{language}）")
+
+    # ------------------------------------------------------------------
+    # 第 3 步：LLM 智能诊断
     # ------------------------------------------------------------------
     try:
-        # 构造测试用例
-        test_cases = []
-        if test_input.strip() and test_expected.strip():
-            test_cases.append({"input": test_input, "expected": test_expected})
-
         diag_result = deps.llm_diagnosis.diagnose(
             code=code,
             problem_desc=problem_desc,
             error_info=error_info,
             test_cases=test_cases if test_cases else None,
+            validation_results=sandbox_results if sandbox_results else None,
             language=language,
         )
         builder.add_error_diagnosis(
@@ -149,35 +183,6 @@ def _run_diagnosis_with_dependencies(
             fix_suggestion="",
         )
         status_parts.append(f"LLM 诊断失败: {e}")
-
-    # ------------------------------------------------------------------
-    # 第 3 步：沙箱运行验证
-    # ------------------------------------------------------------------
-    if REPORT_INCLUDE_SANDBOX and test_input.strip():
-        if is_python_language(language):
-            try:
-                results = deps.sandbox_runner.run_tests(
-                    code=code,
-                    test_cases=[{"input": test_input, "expected": test_expected}],
-                )
-                builder.add_sandbox_results([{
-                    "input": r.input_data,
-                    "expected": r.expected_output,
-                    "actual": r.actual_output,
-                    "passed": r.passed,
-                    "error": r.error,
-                } for r in results])
-                status_parts.append("沙箱运行验证完成")
-            except Exception as e:
-                logger.error(f"沙箱运行异常: {e}")
-                builder.add_sandbox_results([])
-                status_parts.append(f"沙箱运行失败: {e}")
-        else:
-            builder.add_sandbox_results(
-                [],
-                skipped_reason=f"当前沙箱运行暂仅支持 Python3，已跳过 {language} 代码执行验证。",
-            )
-            status_parts.append(f"已跳过沙箱（{language}）")
 
     # ------------------------------------------------------------------
     # 第 4 步：变式训练
