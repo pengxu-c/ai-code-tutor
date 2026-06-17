@@ -1,0 +1,94 @@
+# AI 编程题讲解机器人
+
+面向编程学习者的错解代码诊断与变式训练系统。用户输入题目描述、错误代码、报错信息和测试用例后，系统会生成包含代码结构分析、错误诊断、运行验证和变式练习的 Markdown 讲解报告。
+
+## 功能
+
+- Python AST 代码结构分析
+- DeepSeek 大模型错误诊断与代码解释
+- 子进程沙箱运行测试用例
+- 本地题库与 LLM 结合生成变式训练题
+- LeetCode 在线题库按需检索与导入
+- 生成的变式训练题可一键导入输入区继续练习
+- 支持选择 Python3、Java、C++、JavaScript、Go、Rust 等编程语言
+- Gradio Web 界面展示诊断报告
+
+## 安装
+
+```bash
+pip install -r requirements.txt
+```
+
+## 配置
+
+首次 clone 项目后，复制配置示例：
+
+```bash
+cp config.example.py config.py
+```
+
+建议通过环境变量配置 DeepSeek API Key：
+
+```bash
+export DEEPSEEK_API_KEY=your-deepseek-api-key
+```
+
+也可以在 Gradio 页面中的配置区域临时输入 API Key。
+
+LeetCode 在线题库默认使用 `https://leetcode.cn/graphql/`，如需切换可设置：
+
+```bash
+export LEETCODE_GRAPHQL_URL=https://leetcode.cn/graphql/
+```
+
+## 启动
+
+```bash
+python app.py
+```
+
+或在类 Unix 环境中运行：
+
+```bash
+bash run.sh
+```
+
+默认访问地址为 `http://127.0.0.1:7860`。
+
+## LeetCode 题库说明
+
+项目不会批量复制或内置 LeetCode 全量题面。页面中的“LeetCode 在线题库”支持按需检索，并在用户输入题目 slug 或链接后临时导入单题内容用于讲解。
+
+会员题导入可以在页面“配置”区域填写 LeetCode 登录态：`LeetCode Session` 支持填写
+`LEETCODE_SESSION` 的原始值、`LEETCODE_SESSION=...`，或包含该字段的完整 Cookie
+字符串；`LeetCode CSRF Token` 支持填写 `csrftoken` 的原始值或 `csrftoken=...`。这些凭证
+只会用于当前检索/导入请求，不会写入项目文件，也不会被保存到本地题库。
+
+## 编程语言
+
+页面左侧可以选择编程语言。预设题会根据语言生成对应模板，LeetCode 导入会优先使用该语言的官方代码片段。当前 AST 结构分析和沙箱运行验证仅支持 Python3；选择其他语言时，系统会跳过这两步，并由大模型按所选语言给出诊断和修复代码。
+
+## 项目结构
+
+- `app.py`：Gradio 页面布局、事件绑定和启动入口。
+- `services/`：面向 UI 的业务服务，包含诊断流程、LeetCode 导入和变式题导入。
+- `ui/`：前端 CSS 和 JavaScript 资源。
+- `analyzer/`：AST 分析、LLM 诊断和沙箱运行能力。
+- `database/`：本地题库与 LeetCode 在线题库客户端。
+- `generator/`：变式训练题生成。
+- `utils/`：语言映射、日志和 Markdown 报告构建。
+- `tests/`：基础回归测试和 UI 构建烟雾测试。
+- `picture/`：其中的任意添加一个图片更名为“月.png”即可更换背景，默认为月亮。
+## 测试
+
+安装依赖后运行：
+
+```bash
+python -m pytest
+```
+
+也可以先运行语法/导入检查：
+
+```bash
+python -m compileall app.py config.example.py ui services analyzer database generator utils tests
+```
