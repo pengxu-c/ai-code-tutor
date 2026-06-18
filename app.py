@@ -70,6 +70,12 @@ def build_ui():
     ) as demo:
         generated_variants_state = gr.State([])
 
+        gr.Image(
+            value=os.path.join(os.path.dirname(__file__), "picture", "月.png"),
+            elem_classes=["app-bg-holder"],
+            show_label=False,
+        )
+
         # ==================== 页头 ====================
         gr.Markdown(
             """

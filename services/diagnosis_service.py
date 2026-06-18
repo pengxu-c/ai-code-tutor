@@ -85,7 +85,7 @@ def _run_diagnosis_with_dependencies(
     start_time = time.time()
 
     # 参数校验
-    if not code.strip():
+    if not code or not code.strip():
         return "", "请输入需要诊断的代码。", gr.update(choices=[], value=None), [], None, gr.update()
 
     # 如果用户配置了 API Key，动态更新
@@ -277,7 +277,7 @@ def _get_code_explanation_with_dependencies(
     api_key: str,
 ) -> str:
     """Generate a code explanation with injectable dependencies for tests."""
-    if not code.strip():
+    if not code or not code.strip():
         return "请先输入代码。"
     if api_key and api_key.strip():
         deps.llm_diagnosis.api_key = api_key.strip()
