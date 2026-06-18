@@ -219,37 +219,10 @@ CUSTOM_CSS = """    :root {
         background:
             radial-gradient(circle at top left, rgba(15, 118, 110, 0.10), transparent 28rem),
             linear-gradient(180deg, #f8fbff 0%, var(--app-bg) 46%, #eef2f7 100%) !important;
-        min-height: 100vh;
         color: var(--app-text);
         font-family: var(--app-font-sans);
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
-    }
-    .app-bg-holder {
-        all: unset !important;
-        border: none !important;
-        box-shadow: none !important;
-        background: transparent !important;
-    }
-    .app-bg-holder > div,
-    .app-bg-holder > div > div,
-    .app-bg-holder > div > div > div,
-    .app-bg-holder img {
-        all: unset !important;
-        border: none !important;
-        box-shadow: none !important;
-        background: transparent !important;
-    }
-    .app-bg-holder img {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        object-fit: cover !important;
-        z-index: 0 !important;
-        pointer-events: none !important;
-        display: block !important;
     }
     .gradio-container,
     .gradio-container * {
